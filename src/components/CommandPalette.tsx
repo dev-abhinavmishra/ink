@@ -59,6 +59,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
 
   const items = useMemo<PaletteItem[]>(() => {
     const live = notes.filter(n => !n.trashedAt);
+    const trashed = notes.filter(n => n.trashedAt);
     const q = query.trim().toLowerCase();
 
     const actions: PaletteItem[] = [
@@ -79,7 +80,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
         run: () => { downloadFile('ink-library.md', libraryToMarkdown(live)); onClose(); } },
       { id: 'export', icon: Download, label: 'Export library as JSON', hint: `${live.length} notes`, section: 'actions',
         run: () => { downloadFile('ink-library.json', JSON.stringify(live, null, 2), 'application/json'); onClose(); } },
-      { id: 'trash', icon: Trash2, label: 'Open the wastebasket', hint: `${notes.filter(n => n.trashedAt).length} notes`, section: 'actions',
+      { id: 'trash', icon: Trash2, label: 'Open the wastebasket', hint: `${trashed.length} note${trashed.length === 1 ? '' : 's'}`, section: 'actions',
         run: () => go('/trash') },
     ];
 
