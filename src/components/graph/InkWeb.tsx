@@ -110,6 +110,7 @@ export const InkWeb: React.FC = () => {
   const [dragging, setDragging] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
   const navigate = useNavigate();
 
   const graph = useMemo(() => {
@@ -216,8 +217,9 @@ export const InkWeb: React.FC = () => {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    // No pointer capture yet — capturing at down retargets the click to the
+    // svg and blots never see it. Capture once a real drag begins.
     dragRef.current = { x: e.clientX, y: e.clientY, moved: false };
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
@@ -227,12 +229,19 @@ export const InkWeb: React.FC = () => {
     if (!d.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
     d.moved = true;
     setDragging(true);
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
     d.x = e.clientX;
     d.y = e.clientY;
     const s = vbScale();
     setCam(c => ({ ...c, x: c.x + dx / s, y: c.y + dy / s }));
   };
-  const onPointerUp = () => { dragRef.current = null; setDragging(false); };
+  const onPointerUp = () => {
+    // A real pan ends with a click on whatever blot the cursor stopped on —
+    // swallow it so releasing a drag doesn't open the page underneath.
+    if (dragRef.current?.moved) suppressClickRef.current = true;
+    dragRef.current = null;
+    setDragging(false);
+  };
 
   const zoomCenter = (factor: number) => {
     const svg = svgRef.current;
@@ -242,7 +251,7 @@ export const InkWeb: React.FC = () => {
   };
 
   const openNode = (node: WebNode) => {
-    if (dragRef.current?.moved) return;
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
     if (node.kind === 'ghost') {
       addNote({ title: node.label });
     } else {
@@ -286,6 +295,7 @@ export const InkWeb: React.FC = () => {
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onPointerLeave={onPointerUp}
+              onClick={() => { suppressClickRef.current = false; }}
               style={{ cursor: dragging ? 'grabbing' : 'grab' }}
             >
               <g transform={`translate(${cam.x} ${cam.y}) scale(${cam.k})`}>

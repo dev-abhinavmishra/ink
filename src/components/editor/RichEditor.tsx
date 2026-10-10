@@ -355,6 +355,7 @@ export const RichEditor: React.FC<RichEditorProps> = ({
       if (!editable) return;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
+        debounceRef.current = null;
         onUpdate(JSON.stringify(editor.getJSON()), editor.storage.characterCount.words());
       }, 400);
     },
