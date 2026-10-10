@@ -295,7 +295,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, now, isActive, onSelect, onPi
             />
           )}
         </h3>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 -mr-1">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100 transition-opacity flex-shrink-0 -mr-1">
           <button
             onClick={e => { e.stopPropagation(); onPin(note.id); }}
             className={clsx(

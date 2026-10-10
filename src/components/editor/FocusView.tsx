@@ -16,7 +16,7 @@ import { penOf } from '../../lib/pens';
 const TIMER_OPTIONS = [15, 25, 50];
 
 export const FocusView: React.FC = () => {
-  const { activeNoteId, notes, updateNote, updateNoteFolder, folders, trashNote, removeNoteTag, setActiveNote, prefs, setPrefs } = useStore();
+  const { activeNoteId, notes, updateNote, updateNoteFolder, folders, trashNote, removeNoteTag, setActiveNote, prefs, setPrefs, setNotice } = useStore();
   const activeNote = notes.find(n => n.id === activeNoteId && !n.trashedAt);
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
   const [focusMinutes, setFocusMinutes] = useState<number | null>(null);
@@ -37,8 +37,12 @@ export const FocusView: React.FC = () => {
   }, [focusMinutes, remainingSeconds]);
 
   useEffect(() => {
-    if (remainingSeconds === 0 && focusMinutes !== null) setFocusMinutes(null);
-  }, [remainingSeconds, focusMinutes]);
+    if (remainingSeconds === 0 && focusMinutes !== null) {
+      setFocusMinutes(null);
+      // The timer ran dry — say so on the desk, not just in the rail.
+      setNotice({ message: `${focusMinutes} minutes of ink — stretch, then dip again` });
+    }
+  }, [remainingSeconds, focusMinutes, setNotice]);
 
   const sessionDelta = Math.max(0, (activeNote?.wordCount ?? 0) - sessionStart.words);
 
@@ -155,6 +159,8 @@ export const FocusView: React.FC = () => {
             <article className="max-w-[40rem] w-full px-6 lg:px-10 pt-14 pb-40">
               <div className="flex items-center gap-2 mb-8 font-mono text-2xs text-ink-ghost">
                 <span>deep work</span>
+                <span aria-hidden>·</span>
+                <span style={{ color: penOf(activeNote.ink).color }}>{penOf(activeNote.ink).name}</span>
                 <span aria-hidden>·</span>
                 <select
                   aria-label="Move note to folder"

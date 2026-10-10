@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { format } from 'date-fns';
 import { todayKey, sanitizeDoc } from '../lib/notes';
+import { PENS } from '../lib/pens';
 import type { PenId } from '../lib/pens';
 
 export type Note = {
@@ -216,6 +217,7 @@ export const useStore = create<AppState>()(
             wordCount: partial.wordCount ?? 0,
             trashedAt: null,
             dailyKey: partial.dailyKey ?? null,
+            ink: partial.ink,
           };
           return { notes: [newNote, ...state.notes], activeNoteId: newNote.id };
         });
@@ -346,11 +348,14 @@ export const useStore = create<AppState>()(
         if (!get().folders.some(f => f.name === 'Journal')) {
           set(state => ({ folders: [...state.folders, { id: 'journal', name: 'Journal' }] }));
         }
+        // Journals are written in fountain blue — the same ink the web
+        // already draws them in.
         return get().addNote({
           title: format(new Date(), 'EEEE, MMMM d'),
           folder: 'Journal',
           tags: ['JOURNAL'],
           dailyKey: key,
+          ink: 'fountain',
           content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
         });
       },
@@ -400,7 +405,9 @@ export const useStore = create<AppState>()(
 
       renameTag: (oldName, newName) => set(state => ({
         notes: state.notes.map(note => note.tags.includes(oldName)
-          ? { ...note, tags: note.tags.map(tag => tag === oldName ? newName : tag) }
+          // Dedupe — renaming onto a tag the note already carries must not
+          // leave the same tag twice (two chips, duplicate React keys).
+          ? { ...note, tags: Array.from(new Set(note.tags.map(tag => tag === oldName ? newName : tag))) }
           : note
         ),
       })),
@@ -441,6 +448,7 @@ export const useStore = create<AppState>()(
           imported.push({
             id,
             title: note.title,
+            ink: note.ink && note.ink in PENS ? note.ink : undefined,
             content: JSON.stringify(sanitizeDoc(note.content)),
             tags: Array.isArray(note.tags) ? note.tags.filter((t): t is string => typeof t === 'string') : [],
             lastModified: typeof note.lastModified === 'number' ? note.lastModified : Date.now(),
@@ -452,7 +460,16 @@ export const useStore = create<AppState>()(
             dailyKey: null,
           });
         }
-        if (imported.length) set(state => ({ notes: [...imported, ...state.notes] }));
+        if (imported.length) set(state => {
+          // A note filed under a folder this desk doesn't have would be
+          // unreachable from the shelf — shelve any missing folders first.
+          const have = new Set(state.folders.map(f => f.name.toLowerCase()));
+          const missing = [...new Set(imported.map(n => n.folder))].filter(name => !have.has(name.toLowerCase()));
+          const folders = missing.length
+            ? [...state.folders, ...missing.map(name => ({ id: `${Date.now()}-${name}`, name }))]
+            : state.folders;
+          return { notes: [...imported, ...state.notes], folders };
+        });
         return imported.length;
       },
     }),

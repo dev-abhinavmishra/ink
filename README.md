@@ -30,8 +30,12 @@ every page touched today.
   right edge that tracks how deep you've read.
 - **The pen cup** — every page is written with a pen you choose: iron-gall,
   fountain blue, editor's red, or walnut brown. The pen colors the page's
-  title, its blot in the list and the web, and the drop that lands when the
-  page opens.
+  title, its blot in the list and the web, the drop that lands when the
+  page opens, and even the dashed vein the web draws toward unwritten
+  pages. Journals are always written in fountain blue.
+- **The ink web** — a force-directed map of `[[links]]`: blots sized by
+  word count, veins tapered like drawn ink, dashed circles for pages
+  referenced but not yet written. Drag to pan, pinch or scroll to zoom.
 - **The wastebasket** — crumple a page and it wads itself into the basket;
   discarded slips wait crossed-out and fade as they age. Smooth them back
   out or empty the basket.

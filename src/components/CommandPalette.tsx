@@ -2,21 +2,25 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, FilePlus2, Sun, BookOpen, Users, Mic2, Lightbulb, Trash2,
+  Search, FilePlus2, Sun, BookOpen, Users, BookMarked, Lightbulb, Trash2,
   Notebook, Star, History, Tags, Crosshair, BarChart3, FolderPlus,
-  Download, Droplet, PenLine, CornerDownLeft, Folder, Spline, BookText,
+  Download, Droplet, CornerDownLeft, Folder, Spline, BookText,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore, type Note } from '../store';
 import { NOTE_TEMPLATES } from '../lib/templates';
 import { downloadFile, getNoteIndex, libraryToMarkdown } from '../lib/notes';
+import { InkBlot } from '../lib/ink';
+import { penOf } from '../lib/pens';
 
 interface PaletteItem {
   id: string;
-  icon: React.ElementType;
+  icon?: React.ElementType;
   label: string;
   hint?: string;
   section: 'actions' | 'go' | 'notes';
+  /** a page's fingerprint — drawn instead of an icon when present */
+  blot?: { seed: string; color: string };
   run: () => void;
 }
 
@@ -63,7 +67,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
       { id: 'today', icon: Sun, label: "Today's journal", hint: 'daily note', section: 'actions',
         run: () => { ensureDailyNote(); go('/'); } },
       ...NOTE_TEMPLATES.filter(t => t.id !== 'blank').map(t => ({
-        id: `tpl-${t.id}`, icon: t.id === 'journal' ? BookOpen : t.id === 'meeting' ? Users : t.id === 'reading' ? Mic2 : Lightbulb,
+        id: `tpl-${t.id}`, icon: t.id === 'journal' ? BookOpen : t.id === 'meeting' ? Users : t.id === 'reading' ? BookMarked : Lightbulb,
         label: `New · ${t.name}`, hint: t.hint, section: 'actions' as const,
         run: () => { addNote(t.build()); go('/'); },
       })),
@@ -99,7 +103,8 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
       : [...live].sort((a, b) => b.lastModified - a.lastModified).slice(0, 5)
     ).map(note => ({
       id: `note-${note.id}`,
-      icon: note.dailyKey ? Sun : note.isPinned ? Star : PenLine,
+      icon: note.dailyKey ? Sun : note.isPinned ? Star : undefined,
+      blot: note.dailyKey || note.isPinned ? undefined : { seed: note.id, color: penOf(note.ink).color },
       label: note.title || 'Untitled',
       hint: note.folder,
       section: 'notes' as const,
@@ -219,7 +224,9 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
                         )}
                       >
                         {i === index && <span className="margin-mark" style={{ left: 6 }} />}
-                        <Icon className={clsx('w-4 h-4 flex-shrink-0', i === index ? 'text-ink' : 'text-ink-ghost')} strokeWidth={1.75} />
+                        {item.blot
+                          ? <InkBlot seed={item.blot.seed} size={14} satellites={0} color={item.blot.color} opacity={0.7} className="flex-shrink-0" />
+                          : Icon && <Icon className={clsx('w-4 h-4 flex-shrink-0', i === index ? 'text-ink' : 'text-ink-ghost')} strokeWidth={1.75} />}
                         <span className="flex-1 truncate">{item.label}</span>
                         {item.hint && <span className="font-mono text-2xs text-ink-ghost flex-shrink-0">{item.hint}</span>}
                       </button>

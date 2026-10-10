@@ -138,3 +138,14 @@ back out". Errors state facts and fixes.
   blue and dry toward iron-gall (`ink-dry` 0% color + fountain text-shadow).
 - **Small entrances** — the `[[` shelf and the inkbar use `ink-in` /
   `rise-in` (≤ 320ms, opacity/transform/filter only).
+- **Veins in the writer's ink** — a dashed vein toward an unwritten page
+  runs in the pen of the note that named it, not grey. The web shows which
+  ink reached for a page that doesn't exist yet.
+- **Fingerprints everywhere** — a page's seeded blot, in its own pen,
+  appears wherever the page is named: the list, the `[[` shelf, the
+  palette, the backlinks tray, the logbook's longest pages.
+- **Journals are fountain pages** — daily notes and the Journal template
+  are created with `ink: 'fountain'`, matching the blue the web has
+  always drawn them in.
+- **The timer tells the desk** — a finished deep-work session leaves a
+  toast on the desk (`setNotice`), not a silent rail.

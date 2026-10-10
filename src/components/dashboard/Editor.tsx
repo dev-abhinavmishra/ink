@@ -16,7 +16,7 @@ import {
   History, Undo2, Redo2, Highlighter, Underline,
 } from 'lucide-react';
 import { InkBlot, InkDrop, PenNib, PenRest, Spatter, Squiggle, TornEdge } from '../../lib/ink';
-import { PENS, PEN_ORDER, penOf } from '../../lib/pens';
+import { PENS, PEN_ORDER, penOf, type PenId } from '../../lib/pens';
 import { useNow } from '../../lib/useNow';
 
 type SaveState = 'idle' | 'saving' | 'saved';
@@ -48,6 +48,7 @@ export const Editor: React.FC = () => {
     if (!activeNote) { setDropLanded(false); return; }
     // Every page gets a drop when it's opened — the pen touching down.
     setDropLanded(true);
+    setSaveState('idle'); // a fresh page owes no one a save badge
     const t = setTimeout(() => setDropLanded(false), 1100);
     return () => clearTimeout(t);
   }, [activeNote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -84,12 +85,12 @@ export const Editor: React.FC = () => {
   };
 
   const insertWikiLink = (title: string) => {
-    editor?.chain().focus().insertContent(`[[${title}]]`).run();
+    editor?.chain().focus().insertContent(`[[${title}]] `).run();
     setLinkPickerOpen(false);
   };
 
   const stampDate = () => {
-    editor?.chain().focus().insertContent(format(new Date(), 'EEEE, MMMM d, yyyy')).run();
+    editor?.chain().focus().insertContent(`${format(new Date(), 'EEEE, MMMM d, yyyy')} — `).run();
     setMenuOpen(false);
   };
 
@@ -119,7 +120,14 @@ export const Editor: React.FC = () => {
     requestAnimationFrame(trackScroll);
   }, [activeNote?.id]);
 
-  const liveNotes = notes.filter(n => !n.trashedAt && n.id !== activeNote?.id);
+  // The link shelf reads the desk the way you left it — most recently
+  // touched pages first.
+  const liveNotes = useMemo(
+    () => notes
+      .filter(n => !n.trashedAt && n.id !== activeNote?.id)
+      .sort((a, b) => b.lastModified - a.lastModified),
+    [notes, activeNote?.id]
+  );
 
   const editorClasses = clsx(
     prefs.editorTextSize !== 'md' && `pref-text-${prefs.editorTextSize}`
@@ -176,6 +184,8 @@ export const Editor: React.FC = () => {
                   onClick={() => setPenCupOpen(open => !open)}
                   title={`The pen cup — ${pen.name}`}
                   aria-label="Choose this page's pen"
+                  aria-expanded={penCupOpen}
+                  aria-haspopup="menu"
                   className="w-8 h-8 flex items-center justify-center rounded hover:bg-paper-dim transition-colors"
                   style={{ color: pen.color }}
                 >
@@ -289,7 +299,9 @@ export const Editor: React.FC = () => {
                           setMenuOpen(false);
                           setCrumpling(true);
                           // The sheet crumples into the basket, then the store drops it.
-                          setTimeout(() => trashNote(id), 460);
+                          // Always reset — trashing may not unmount the sheet if
+                          // another note is picked up straight away.
+                          setTimeout(() => { trashNote(id); setCrumpling(false); }, 460);
                         }} />
                       </motion.div>
                     </>
@@ -450,7 +462,7 @@ export const Editor: React.FC = () => {
           <h1>{activeNote.title || 'Untitled'}</h1>
           <PrintDoc content={activeNote.content} />
           <p className="print-colophon">
-            {activeNote.wordCount || 0} words · written {format(activeNote.createdAt, 'MMMM d, yyyy')} · Ink — a writing desk
+            {pen.name} · {activeNote.wordCount || 0} words · written {format(activeNote.createdAt, 'MMMM d, yyyy')} · Ink — a writing desk
           </p>
         </div>,
         document.body
@@ -632,7 +644,7 @@ const MenuItem: React.FC<{ icon: React.ElementType; label: string; onClick: () =
   </button>
 );
 
-const BacklinksTray: React.FC<{ backlinks: { id: string; title: string }[]; onOpen: (id: string) => void }> = ({ backlinks, onOpen }) => {
+const BacklinksTray: React.FC<{ backlinks: { id: string; title: string; ink?: PenId }[]; onOpen: (id: string) => void }> = ({ backlinks, onOpen }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="absolute bottom-5 left-5 z-30 hidden md:block">
@@ -658,9 +670,10 @@ const BacklinksTray: React.FC<{ backlinks: { id: string; title: string }[]; onOp
                 <button
                   key={note.id}
                   onClick={() => onOpen(note.id)}
-                  className="w-full text-left px-3.5 py-2 text-[13px] font-serif text-ink hover:bg-paper-dim truncate transition-colors"
+                  className="w-full flex items-center gap-2 text-left px-3.5 py-2 text-[13px] font-serif text-ink hover:bg-paper-dim transition-colors"
                 >
-                  {note.title || 'Untitled'}
+                  <InkBlot seed={note.id} size={10} satellites={0} color={penOf(note.ink).color} opacity={0.7} className="flex-shrink-0" />
+                  <span className="truncate">{note.title || 'Untitled'}</span>
                 </button>
               ))}
             </div>

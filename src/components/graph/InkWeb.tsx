@@ -174,6 +174,9 @@ export const InkWeb: React.FC = () => {
   const neighbours = useMemo(() => {
     if (!hovered) return null;
     const idx = nodes.findIndex(n => n.id === hovered);
+    // The hovered page may have left the web (trashed, unlinked) — a stale
+    // id must not dim the whole sheet.
+    if (idx < 0) return null;
     const set = new Set<number>([idx]);
     edges.forEach(e => {
       if (e.a === idx) set.add(e.b);
@@ -218,13 +221,48 @@ export const InkWeb: React.FC = () => {
     zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0013));
   };
 
+  // Touch: track every pointer so a second finger turns the drag into a pinch.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ dist: number; k: number } | null>(null);
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointersRef.current.size === 2) {
+      // Second finger down — the gesture is now a pinch, not a pan.
+      dragRef.current = null;
+      const [a, b] = [...pointersRef.current.values()];
+      pinchRef.current = { dist: Math.hypot(b.x - a.x, b.y - a.y), k: cam.k };
+      for (const id of pointersRef.current.keys()) {
+        try { (e.currentTarget as Element).setPointerCapture(id); } catch { /* finger may already be up */ }
+      }
+      setDragging(true);
+      return;
+    }
     // No pointer capture yet — capturing at down retargets the click to the
     // svg and blots never see it. Capture once a real drag begins.
     dragRef.current = { x: e.clientX, y: e.clientY, moved: false };
   };
   const onPointerMove = (e: React.PointerEvent) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    const pinch = pinchRef.current;
+    if (pinch && pointersRef.current.size === 2) {
+      const [a, b] = [...pointersRef.current.values()];
+      const dist = Math.hypot(b.x - a.x, b.y - a.y);
+      if (dist <= 0 || pinch.dist <= 0) return;
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      setCam(c => {
+        const k2 = Math.min(5, Math.max(0.3, pinch.k * (dist / pinch.dist)));
+        const p = toWorld(midX, midY);
+        const wx = (p.x - c.x) / c.k;
+        const wy = (p.y - c.y) / c.k;
+        return { k: k2, x: c.x + (c.k - k2) * wx, y: c.y + (c.k - k2) * wy };
+      });
+      return;
+    }
     const d = dragRef.current;
     if (!d) return;
     if (e.buttons === 0) {
@@ -243,7 +281,17 @@ export const InkWeb: React.FC = () => {
     const s = vbScale();
     setCam(c => ({ ...c, x: c.x + dx / s, y: c.y + dy / s }));
   };
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pinchRef.current && pointersRef.current.size < 2) {
+      // Pinch ended — swallow the click the lifting finger might fire, and
+      // don't let the remaining finger resume mid-pan from a stale origin.
+      pinchRef.current = null;
+      suppressClickRef.current = true;
+      dragRef.current = null;
+      setDragging(false);
+      return;
+    }
     // A real pan ends with a click on whatever blot the cursor stopped on —
     // swallow it so releasing a drag doesn't open the page underneath.
     if (dragRef.current?.moved) suppressClickRef.current = true;
@@ -278,7 +326,7 @@ export const InkWeb: React.FC = () => {
       <div className="px-6 md:px-10 pt-10 md:pt-14 pb-4 flex-shrink-0">
         <h1 className="font-serif text-3xl font-semibold text-ink tracking-tight">The ink web</h1>
         <p className="text-sm text-ink-faint mt-1.5 max-w-lg">
-          Pages that name each other, drawn vein to blot. Blot size follows word count; dashed circles are pages referenced but not yet written — click one to begin it. Drag to wander, scroll to lean in.
+          Pages that name each other, drawn vein to blot. Blot size follows word count; dashed circles are pages referenced but not yet written — click one to begin it. Drag to wander, pinch or scroll to lean in.
         </p>
       </div>
 
@@ -301,6 +349,7 @@ export const InkWeb: React.FC = () => {
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
               onClick={() => { suppressClickRef.current = false; }}
               style={{ cursor: dragging ? 'grabbing' : 'grab' }}
             >
@@ -310,24 +359,27 @@ export const InkWeb: React.FC = () => {
                   const a = nodes[e.a];
                   const b = nodes[e.b];
                   const lit = hovered && (a.id === hovered || b.id === hovered);
+                  // A vein toward an unwritten page runs in the pen that
+                  // named it — the writer's own ink, still wet on the map.
+                  const veinInk = e.ghost ? penOf(a.ink).color : 'var(--color-ink-ghost)';
                   return (
                     <g key={i}>
                       <path
                         d={veinPath(a.x, a.y, b.x, b.y, i % 2 === 0 ? 1 : -1)}
-                        fill={lit ? 'var(--color-pencil)' : 'var(--color-ink-ghost)'}
-                        fillOpacity={hovered && !lit ? 0.12 : lit ? 0.85 : e.ghost ? 0.22 : 0.4}
+                        fill={lit ? 'var(--color-pencil)' : veinInk}
+                        fillOpacity={hovered && !lit ? 0.12 : lit ? 0.85 : e.ghost ? 0.28 : 0.4}
                         style={{ transition: 'fill-opacity .15s, fill .15s' }}
                       />
                       {e.ghost && (
                         <path
                           d={veinCenter(a.x, a.y, b.x, b.y, i % 2 === 0 ? 1 : -1)}
                           fill="none"
-                          stroke={lit ? 'var(--color-pencil)' : 'var(--color-ink-faint)'}
+                          stroke={lit ? 'var(--color-pencil)' : penOf(a.ink).color}
                           strokeWidth={1.1}
                           strokeDasharray="4 5"
                           strokeLinecap="round"
                           vectorEffect="non-scaling-stroke"
-                          opacity={hovered && !lit ? 0.15 : 0.75}
+                          opacity={hovered && !lit ? 0.15 : 0.7}
                         />
                       )}
                     </g>

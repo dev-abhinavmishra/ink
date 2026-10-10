@@ -21,6 +21,7 @@ import {
 import { useStore } from '../../store';
 import { sanitizeDoc } from '../../lib/notes';
 import { InkBlot, PenNib } from '../../lib/ink';
+import { penOf, type PenId } from '../../lib/pens';
 
 const WIKILINK_RE = /\[\[([^\][\n]+)\]\]/g;
 
@@ -204,7 +205,7 @@ const markCurrentBlock = (editor: Editor) => {
  * offers to start it — the blank page is filed, not opened, so the
  * sentence you're writing never loses its place. */
 
-type SuggestItem = { id: string | 'new'; title: string };
+type SuggestItem = { id: string | 'new'; title: string; ink?: PenId };
 type SuggestUI = { from: number; to: number; query: string; x: number; y: number; items: SuggestItem[]; index: number };
 
 const linkItems = (query: string): SuggestItem[] => {
@@ -219,7 +220,7 @@ const linkItems = (query: string): SuggestItem[] => {
       return aPre - bPre || b.lastModified - a.lastModified;
     })
     .slice(0, 7)
-    .map((n): SuggestItem => ({ id: n.id, title: n.title || 'Untitled' }));
+    .map((n): SuggestItem => ({ id: n.id, title: n.title || 'Untitled', ink: n.ink }));
   const exact = live.some(n => (n.title || 'Untitled').trim().toLowerCase() === q);
   if (q && !exact) matches.unshift({ id: 'new', title: query.trim() });
   return matches;
@@ -451,7 +452,7 @@ export const RichEditor: React.FC<RichEditorProps> = ({
                 {item.id === 'new' ? (
                   <PenNib className="w-3.5 h-3.5 -rotate-45 text-pencil flex-shrink-0" strokeWidth={2} />
                 ) : (
-                  <InkBlot seed={item.id} size={10} satellites={0} opacity={0.75} className="flex-shrink-0 -mx-px" />
+                  <InkBlot seed={item.id} size={10} satellites={0} color={penOf(item.ink).color} opacity={0.75} className="flex-shrink-0 -mx-px" />
                 )}
                 <span className={clsx('flex-1 truncate font-serif text-[13px]', item.id === 'new' ? 'text-pencil italic' : 'text-ink')}>
                   {item.id === 'new' ? `Start “${item.title}”` : item.title}
