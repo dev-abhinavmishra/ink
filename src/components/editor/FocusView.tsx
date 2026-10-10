@@ -11,6 +11,7 @@ import {
   Bold, Italic, List, Quote, Code, Pilcrow, Timer, X, Trash2, ArrowLeft,
 } from 'lucide-react';
 import { PenRest, Squiggle } from '../../lib/ink';
+import { penOf } from '../../lib/pens';
 
 const TIMER_OPTIONS = [15, 25, 50];
 
@@ -173,9 +174,10 @@ export const FocusView: React.FC = () => {
                 value={activeNote.title}
                 onChange={event => updateNote(activeNote.id, { title: event.target.value })}
                 placeholder="Untitled"
-                className="w-full border-0 bg-transparent p-0 font-serif text-[2.5rem] font-semibold text-ink mb-1 leading-[1.12] tracking-[-0.015em] placeholder:text-ink-ghost/50 focus:ring-0"
+                className="w-full border-0 bg-transparent p-0 font-serif text-[2.5rem] font-semibold mb-1 leading-[1.12] tracking-[-0.015em] placeholder:text-ink-ghost/50 focus:ring-0"
+                style={{ color: penOf(activeNote.ink).color }}
               />
-              <Squiggle key={activeNote.id} seed={`focus-title:${activeNote.id}`} width={200} color="var(--color-ink-ghost)" className="block opacity-40 mb-4" draw />
+              <Squiggle key={activeNote.id} seed={`focus-title:${activeNote.id}`} width={200} color={penOf(activeNote.ink).color} className="block opacity-50 mb-4" draw />
 
               <div className="flex items-center gap-x-4 gap-y-1 mb-10 font-mono text-2xs text-ink-ghost flex-wrap">
                 <span>edited {formatDistanceToNow(activeNote.lastModified, { addSuffix: true })}</span>

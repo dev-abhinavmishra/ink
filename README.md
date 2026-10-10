@@ -28,8 +28,16 @@ every page touched today.
   underline, margin marks on the active row, dog-eared current page,
   asterism rules, a torn deckle edge on the sheet, and an ink line down the
   right edge that tracks how deep you've read.
-- **The wastebasket** — discarded pages wait crossed-out; smooth them back
+- **The pen cup** — every page is written with a pen you choose: iron-gall,
+  fountain blue, editor's red, or walnut brown. The pen colors the page's
+  title, its blot in the list and the web, and the drop that lands when the
+  page opens.
+- **The wastebasket** — crumple a page and it wads itself into the basket;
+  discarded slips wait crossed-out and fade as they age. Smooth them back
   out or empty the basket.
+- **Pages live and breathe** — a freshly-written page keeps a blue blot in
+  the list until the ink dries; a page untouched for a month yellows like
+  paper left in the sun; every save lands a drop in the sidebar ink well.
 - **Tools of the desk** — stamp the date, undo/redo, print the page (the
   manuscript alone goes to paper), carbon-copy a note, bind the whole
   library into one Markdown volume, or export/import JSON.
@@ -39,7 +47,8 @@ every page touched today.
 `src/lib/ink.tsx` + `ink-shapes.ts` are a small procedural art library —
 seeded, deterministic `InkBlot` thumbprints, `PenNib`, `Squiggle`, `Strike`,
 `ProofCircle`, `TornEdge`, `InkDrop`, `InkWell`, `Spatter`, `PenRest`.
-Nothing in the app draws a generic rectangle where ink would do.
+`src/lib/pens.ts` is the pen cup. Nothing in the app draws a generic
+rectangle where ink would do.
 
 Design tokens, type ramp, and rules live in `DESIGN.md` — including the one
 about never shipping anything that reads as AI-generated flat-slate SaaS.

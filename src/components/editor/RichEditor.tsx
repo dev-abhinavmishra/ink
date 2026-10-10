@@ -101,7 +101,10 @@ const openLinkAt = (editor: Editor): { from: number; to: number; query: string }
   let crossedBreak = false;
   $from.parent.forEach((child, offset) => {
     if (!child.isText || !child.text) {
-      if (t > openIdx && t <= textOffset) crossedBreak = true;
+      // A break strictly inside the `[[`..caret window ends the link — but a
+      // break the caret *touches* (same doc position) is beside it, not in it.
+      // Text offsets can't tell those apart, so compare doc positions.
+      if (t > openIdx && parentStart + offset < $from.pos) crossedBreak = true;
       return;
     }
     if (from < 0 && openIdx >= t && openIdx + 2 <= t + child.text.length) {
@@ -421,7 +424,7 @@ export const RichEditor: React.FC<RichEditorProps> = ({
       {/* The shelf of pages — appears under the caret while a [[ link is open */}
       {suggest && (
         <div
-          className="fixed z-[85] w-72 bg-paper border border-line rounded shadow-pop overflow-hidden"
+          className="ink-in fixed z-[85] w-72 bg-paper border border-line rounded shadow-pop overflow-hidden"
           style={{ left: suggest.x, top: suggest.y, transform: window.innerHeight - suggest.y < 120 ? 'translateY(-100%)' : undefined }}
           onMouseDown={event => event.preventDefault()}
           role="listbox"

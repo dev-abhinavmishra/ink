@@ -25,6 +25,11 @@
   --color-manila-wash: #EEE7D8;
   --color-fountain: #31518C;
   --color-fountain-wash: #E4EAF4;
+  --color-walnut: #7B5B33;
+  --color-walnut-deep: #5F4423;
+  --color-walnut-wash: #F0E8DB;
+  /* The pen currently loaded — set per sheet via style={{'--pen': ...}} */
+  --pen: var(--color-ink);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out: cubic-bezier(0.45, 0, 0.15, 1);
 }
@@ -252,8 +257,9 @@
     0% {
       opacity: 0.08;
       filter: blur(1.8px);
-      color: var(--color-ink-ghost);
-      text-shadow: 0 0 10px color-mix(in srgb, var(--color-ink) 35%, transparent);
+      /* wet ink is bluer — it darkens toward iron-gall as it dries */
+      color: color-mix(in srgb, var(--color-fountain) 55%, var(--color-ink-ghost));
+      text-shadow: 0 0 10px color-mix(in srgb, var(--color-fountain) 35%, transparent);
     }
     55% {
       opacity: 0.82;
@@ -434,6 +440,84 @@
     background: linear-gradient(to bottom, var(--color-ink-soft), var(--color-ink) 70%, var(--color-pencil));
     border-radius: 0 0 2px 2px;
     transition: height 0.18s var(--ease-out);
+  }
+
+  /* ── The desk in motion ────────────────────────────────────── */
+
+  /* A drop falls from the pen into the well and the surface bobs */
+  .well-drop {
+    animation: well-drop 0.55s var(--ease-in-out) both;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes well-drop {
+    0%   { transform: translateY(-30px); opacity: 0; }
+    25%  { opacity: 0.9; }
+    80%  { transform: translateY(0); opacity: 0.85; }
+    100% { transform: translateY(0) scale(1.7); opacity: 0; }
+  }
+  .well-bob {
+    animation: well-bob 0.85s var(--ease-out);
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  @keyframes well-bob {
+    0%, 100% { transform: translateY(0); }
+    30%      { transform: translateY(1.8px); }
+    62%      { transform: translateY(-1px); }
+  }
+
+  /* Crumple — the sheet is wadded up and dropped in the basket */
+  .crumpling {
+    transform-origin: 30% 75%;
+    transition:
+      transform 0.46s cubic-bezier(0.55, -0.05, 0.68, 0.19),
+      opacity 0.4s ease 0.06s,
+      filter 0.46s ease;
+    transform: translate(-32vw, 42vh) rotate(-11deg) skew(5deg, 3deg) scale(0.09);
+    filter: contrast(1.06) brightness(0.96);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* The press — the blotter stamps the restored words back down */
+  .ink-press {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+    background: radial-gradient(ellipse 55% 40% at 50% 34%, var(--color-ink), transparent 72%);
+    animation: press 0.55s var(--ease-out) both;
+  }
+  @keyframes press {
+    0%   { opacity: 0; transform: scale(0.92); }
+    18%  { opacity: 0.15; }
+    100% { opacity: 0; transform: scale(1.02); }
+  }
+
+  /* A wet blot breathes faintly until the page dries */
+  .wet-blot { animation: wet-blot 2.4s var(--ease-in-out) infinite; }
+  @keyframes wet-blot {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.12); }
+  }
+
+  /* Small ink entrances — popovers and the [[ shelf rise into focus */
+  .ink-in {
+    animation: ink-in 0.16s var(--ease-out) both;
+  }
+  @keyframes ink-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); filter: blur(1px); }
+    to   { opacity: 1; transform: none; filter: none; }
+  }
+
+  /* The inkbar rises into place as the sheet is picked up */
+  .inkbar {
+    animation: rise-in 0.32s var(--ease-out) both;
+  }
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(7px); }
+    to   { opacity: 1; transform: none; }
   }
 }
 

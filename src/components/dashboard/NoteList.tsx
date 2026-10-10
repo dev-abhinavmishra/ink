@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { formatDistanceToNow, format } from 'date-fns';
 import { Search, Pin, Trash2, ArrowUpDown, Check, PenLine, Droplet } from 'lucide-react';
 import { InkBlot, PenRest, ProofCircle } from '../../lib/ink';
+import { penOf } from '../../lib/pens';
 
 interface NoteListProps {
   filter?: 'pinned' | 'recent' | 'all';
@@ -36,6 +37,7 @@ const dateLabel = (time: number, now: number) =>
     : format(time, 'MMM d');
 
 const SIX_HOURS = 6 * 3600 * 1000;
+const THIRTY_DAYS = 30 * 24 * 3600 * 1000;
 
 export const NoteList: React.FC<NoteListProps> = ({ filter = 'all', title }) => {
   const {
@@ -266,6 +268,10 @@ interface NoteCardProps {
 
 const NoteCard: React.FC<NoteCardProps> = ({ note, now, isActive, onSelect, onPin, onTrash, onTagClick, onTagRemove, index }) => {
   const snippet = (index.get(note.id)?.text ?? '').slice(0, 140);
+  const pen = penOf(note.ink);
+  const wet = now - note.lastModified < SIX_HOURS;
+  // A page untouched for a month yellows like paper left in the sun.
+  const aged = now - note.lastModified > THIRTY_DAYS;
   return (
     <div
       onClick={onSelect}
@@ -273,7 +279,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, now, isActive, onSelect, onPi
         'group relative rounded cursor-pointer transition-colors duration-100 px-3 py-2.5',
         isActive
           ? 'dog-ear bg-paper shadow-[0_0_0_1px_var(--color-line),0_2px_8px_-2px_rgba(27,30,33,0.1)]'
-          : 'hover:bg-paper-dim/70'
+          : aged ? 'bg-manila-wash/40 hover:bg-manila-wash/60' : 'hover:bg-paper-dim/70'
       )}
     >
       {isActive && <span className="absolute left-0 top-2.5 bottom-2.5 w-[3px] bg-pencil rounded-r-full" />}
@@ -345,13 +351,18 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, now, isActive, onSelect, onPi
         </span>
       </div>
 
-      {/* every page carries its own blot — seeded by id, like a thumbprint */}
+      {/* every page carries its own blot — seeded by id, in its own pen.
+          still-blue while the ink's wet, pen color once it dries. */}
       <InkBlot
         seed={note.id}
         size={15}
         satellites={1}
-        opacity={0.4}
-        className="absolute right-2.5 bottom-9 pointer-events-none opacity-50 group-hover:opacity-90 transition-opacity"
+        color={wet ? 'var(--color-fountain)' : pen.color}
+        opacity={wet ? 0.55 : 0.4}
+        className={clsx(
+          'absolute right-2.5 bottom-9 pointer-events-none transition-opacity',
+          wet ? 'wet-blot opacity-60 group-hover:opacity-90' : 'opacity-50 group-hover:opacity-90'
+        )}
       />
     </div>
   );

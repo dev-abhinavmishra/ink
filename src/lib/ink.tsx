@@ -5,6 +5,8 @@
 import React, { useMemo } from 'react';
 import { blotPath, rng, smoothClosed } from './ink-shapes';
 
+/* The pen cup lives in pens.ts (non-component exports break fast refresh). */
+
 /* ── InkBlot — a note's fingerprint ─────────────────────────── */
 
 interface InkBlotProps {
@@ -173,17 +175,18 @@ export const TornEdge: React.FC<{ seed?: string; className?: string }> = ({ seed
 
 /* ── InkDrop — a drop falls and lands on a fresh page ───────── */
 
-export const InkDrop: React.FC<{ seed?: string; size?: number }> = ({ seed = 'drop', size = 34 }) => (
+export const InkDrop: React.FC<{ seed?: string; size?: number; color?: string }> = ({ seed = 'drop', size = 34, color = 'var(--color-ink)' }) => (
   <span className="ink-drop-wrap" aria-hidden>
     <svg width={size} height={size} viewBox="-64 -64 128 128" className="ink-drop-land">
-      <path d={blotPath(seed, 36)} fill="var(--color-ink)" opacity={0.85} />
+      <path d={blotPath(seed, 36)} fill={color} opacity={0.85} />
     </svg>
   </span>
 );
 
 /* ── InkWell — the desk's ink bottle; fill = pages wet today ── */
 
-export const InkWell: React.FC<{ level: number; className?: string }> = ({ level, className }) => {
+export const InkWell: React.FC<{ level: number; className?: string; /** changes every time a drop lands — replays the splash */
+  pulse?: number }> = ({ level, className, pulse = 0 }) => {
   const pct = Math.max(0.06, Math.min(1, level));
   const clipId = React.useId();
   return (
@@ -194,12 +197,16 @@ export const InkWell: React.FC<{ level: number; className?: string }> = ({ level
           <path d="M15 6 h10 v5 c6 2 9 7 9 14 v14 a4 4 0 0 1 -4 4 h-20 a4 4 0 0 1 -4 -4 v-14 c0 -7 3 -12 9 -14 Z" />
         </clipPath>
       </defs>
-      {/* ink inside the bottle */}
-      <g clipPath={`url(#${clipId})`}>
+      {/* ink inside the bottle — bobs when a fresh drop lands */}
+      <g clipPath={`url(#${clipId})`} className={pulse ? 'well-bob' : undefined} key={pulse ? `b${pulse}` : 'b'}>
         <rect x="0" y={46 - pct * 40} width="40" height="46" fill="var(--color-ink)" opacity={0.85} style={{ transition: 'y .7s var(--ease-out)' }} />
         {/* meniscus glint */}
         <ellipse cx="20" cy={46 - pct * 40} rx="13" ry="1.6" fill="var(--color-paper)" opacity={0.18} style={{ transition: 'cy .7s var(--ease-out)' }} />
       </g>
+      {/* the drop itself, falling from the lip to the surface */}
+      {pulse > 0 && (
+        <circle key={`d${pulse}`} className="well-drop" cx="20" cy={46 - pct * 40} r="2.6" fill="var(--color-ink)" />
+      )}
       {/* glass outline */}
       <path d="M15 6 h10 v5 c6 2 9 7 9 14 v14 a4 4 0 0 1 -4 4 h-20 a4 4 0 0 1 -4 -4 v-14 c0 -7 3 -12 9 -14 Z"
         fill="none" stroke="var(--color-ink-faint)" strokeWidth="1.3" />

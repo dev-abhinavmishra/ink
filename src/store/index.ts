@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { format } from 'date-fns';
 import { todayKey, sanitizeDoc } from '../lib/notes';
+import type { PenId } from '../lib/pens';
 
 export type Note = {
   id: string;
@@ -12,6 +13,8 @@ export type Note = {
   createdAt: number;
   isPinned: boolean;
   folder: string;
+  /** which pen the page is written with — absent = iron-gall */
+  ink?: PenId;
   wordCount: number;
   trashedAt: number | null;
   dailyKey: string | null;

@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // The writing desk — paper, ink, the editor's pencil.
+        // The writing desk — paper, ink, the editor's pencil, a walnut-brown pen.
         desk: {
           DEFAULT: "#E7E9E6",
           deep: "#DCDFDC",
@@ -40,6 +40,11 @@ export default {
         fountain: {
           DEFAULT: "#31518C",
           wash: "#E4EAF4",
+        },
+        walnut: {
+          DEFAULT: "#7B5B33",
+          deep: "#5F4423",
+          wash: "#F0E8DB",
         },
       },
       borderRadius: {

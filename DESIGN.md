@@ -117,3 +117,24 @@ back out". Errors state facts and fixes.
   read it. Never parse per row per keystroke.
 - **The desk is only so big** — `guardedStorage` catches a full write and
   surfaces a notice (throttled 30s) instead of swallowing it.
+- **The pen cup** — each page is written with one of four pens (iron-gall,
+  fountain blue, editor's red, walnut brown; `pens.ts`, `Note.ink`). The pen
+  colors the page's title, title rule, blot in the list and in the web, and
+  the drop that lands when the page opens. Pens never touch body text.
+- **Wet and aged pages** — a page edited in the last hours keeps a blue,
+  breathing blot in the list until it dries into its pen color; a page left
+  alone for a month yellows faintly (`bg-manila-wash`). The header says
+  "still wet" while the ink is fresh.
+- **The well drinks** — every save drops ink into the sidebar well: a drop
+  falls from the lip and the surface bobs (`well-drop`, `well-bob`; the
+  pulse is the library's newest `lastModified`).
+- **Crumple** — moving a page to the wastebasket wads the sheet up and
+  tosses it bottom-left (`.crumpling`, ~460ms), then the store drops it.
+  Slips in the basket fade as they age.
+- **The press** — restoring a draft presses the old words back onto the
+  page (`.ink-press`, a quick radial ink flash) after the editor swaps in
+  the restored doc.
+- **Wet ink goes blue first** — fresh keystrokes start diluted fountain
+  blue and dry toward iron-gall (`ink-dry` 0% color + fountain text-shadow).
+- **Small entrances** — the `[[` shelf and the inkbar use `ink-in` /
+  `rise-in` (≤ 320ms, opacity/transform/filter only).

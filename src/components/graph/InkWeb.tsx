@@ -4,6 +4,7 @@ import { useStore } from '../../store';
 import { getNoteIndex } from '../../lib/notes';
 import { blotPath, hashOf } from '../../lib/ink-shapes';
 import { PenRest } from '../../lib/ink';
+import { penOf, type PenId } from '../../lib/pens';
 import { Minus, Plus, Scan } from 'lucide-react';
 
 type NodeKind = 'page' | 'daily' | 'ghost';
@@ -14,6 +15,7 @@ interface WebNode {
   words: number;
   kind: NodeKind;
   pinned: boolean;
+  ink?: PenId;
   x: number; y: number; vx: number; vy: number;
 }
 
@@ -121,6 +123,7 @@ export const InkWeb: React.FC = () => {
       words: n.wordCount,
       kind: n.dailyKey ? 'daily' : 'page',
       pinned: n.isPinned,
+      ink: n.ink,
       x: 0, y: 0, vx: 0, vy: 0,
     }));
     const byTitle = new Map<string, number>();
@@ -224,6 +227,11 @@ export const InkWeb: React.FC = () => {
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d) return;
+    if (e.buttons === 0) {
+      // The button went up outside the svg before a drag began — drop it.
+      dragRef.current = null;
+      return;
+    }
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (!d.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
@@ -242,7 +250,6 @@ export const InkWeb: React.FC = () => {
     dragRef.current = null;
     setDragging(false);
   };
-
   const zoomCenter = (factor: number) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -294,7 +301,6 @@ export const InkWeb: React.FC = () => {
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
-              onPointerLeave={onPointerUp}
               onClick={() => { suppressClickRef.current = false; }}
               style={{ cursor: dragging ? 'grabbing' : 'grab' }}
             >
@@ -363,7 +369,7 @@ export const InkWeb: React.FC = () => {
                           <path
                             d={blotPath(node.id, r * 4)}
                             transform="scale(0.25)"
-                            fill={node.kind === 'daily' ? 'var(--color-fountain)' : 'var(--color-ink)'}
+                            fill={node.ink ? penOf(node.ink).color : node.kind === 'daily' ? 'var(--color-fountain)' : 'var(--color-ink)'}
                             fillOpacity={node.kind === 'daily' ? 0.9 : 0.82}
                             stroke={node.pinned ? 'var(--color-pencil)' : 'none'}
                             strokeWidth={node.pinned ? 5 : 0}
@@ -376,7 +382,7 @@ export const InkWeb: React.FC = () => {
                             cx={r * 1.7 + seed * 5}
                             cy={-r * 1.15}
                             r={1.3 + seed * 1.4}
-                            fill={node.kind === 'daily' ? 'var(--color-fountain)' : 'var(--color-ink)'}
+                            fill={node.ink ? penOf(node.ink).color : node.kind === 'daily' ? 'var(--color-fountain)' : 'var(--color-ink)'}
                             fillOpacity={0.5}
                           />
                         )}

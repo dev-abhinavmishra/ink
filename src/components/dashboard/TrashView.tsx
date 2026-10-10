@@ -5,9 +5,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { Undo2, Trash2, Trash } from 'lucide-react';
 import { hashOf } from '../../lib/ink-shapes';
 import { Strike } from '../../lib/ink';
+import { useNow } from '../../lib/useNow';
 
 export const TrashView: React.FC = () => {
   const { notes, restoreNote, deleteForever, emptyTrash } = useStore();
+  const now = useNow();
   const trashed = notes
     .filter(n => n.trashedAt)
     .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
@@ -42,11 +44,15 @@ export const TrashView: React.FC = () => {
           </div>
         ) : (
           <div className="bg-paper border border-line rounded divide-y divide-line overflow-hidden paper-grain">
-            {trashed.map(note => (
+            {trashed.map(note => {
+              // Old slips dry out and fade like paper left in the sun.
+              const daysInBin = note.trashedAt ? (now - note.trashedAt) / 86400000 : 0;
+              const fade = Math.max(0.42, Math.min(0.95, 0.95 - daysInBin * 0.05));
+              return (
               <div
                 key={note.id}
                 className="group flex items-center gap-4 px-5 py-4 hover:bg-paper-dim/60 transition-colors"
-                style={{ transform: `rotate(${(hashOf(note.id) - 0.5) * 0.9}deg)` }}
+                style={{ transform: `rotate(${(hashOf(note.id) - 0.5) * 0.9}deg)`, opacity: fade }}
               >
                 <div className="flex-1 min-w-0">
                   <p className="relative self-start inline-block max-w-full font-serif font-medium text-[15px] text-ink-faint truncate">
@@ -76,7 +82,8 @@ export const TrashView: React.FC = () => {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

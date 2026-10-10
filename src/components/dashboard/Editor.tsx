@@ -15,7 +15,9 @@ import {
   MoreHorizontal, Plus, CornerLeftUp, Droplet, Printer, Stamp,
   History, Undo2, Redo2, Highlighter, Underline,
 } from 'lucide-react';
-import { InkDrop, PenRest, Spatter, Squiggle, TornEdge } from '../../lib/ink';
+import { InkBlot, InkDrop, PenNib, PenRest, Spatter, Squiggle, TornEdge } from '../../lib/ink';
+import { PENS, PEN_ORDER, penOf } from '../../lib/pens';
+import { useNow } from '../../lib/useNow';
 
 type SaveState = 'idle' | 'saving' | 'saved';
 
@@ -35,22 +37,26 @@ export const Editor: React.FC = () => {
   const [dropLanded, setDropLanded] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [draftPreview, setDraftPreview] = useState(0);
+  const [penCupOpen, setPenCupOpen] = useState(false);
+  const [crumpling, setCrumpling] = useState(false);
+  const [pressing, setPressing] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const depthRef = useRef<HTMLSpanElement>(null);
 
   React.useEffect(() => {
     if (!activeNote) { setDropLanded(false); return; }
-    const fresh = activeNote.wordCount === 0 && Date.now() - activeNote.createdAt < 20000;
-    if (!fresh) { setDropLanded(false); return; }
+    // Every page gets a drop when it's opened — the pen touching down.
     setDropLanded(true);
-    const t = setTimeout(() => setDropLanded(false), 1700);
+    const t = setTimeout(() => setDropLanded(false), 1100);
     return () => clearTimeout(t);
   }, [activeNote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One parse of the whole library per change — backlinks, and anything
   // else that needs flat text, read from the index instead of re-walking JSON.
   const noteIndex = useMemo(() => getNoteIndex(notes), [notes]);
+  const pen = penOf(activeNote?.ink);
+  const now = useNow();
 
   const backlinks = useMemo(
     () => (activeNote ? findBacklinksIndexed(notes, noteIndex, activeNote.title || '') : []),
@@ -133,7 +139,11 @@ export const Editor: React.FC = () => {
           <p className="font-mono text-2xs text-ink-ghost">⌘K — search everything</p>
         </div>
       ) : (
-        <section className="flex-1 flex flex-col relative md:m-3 sheet paper-grain overflow-hidden">
+        <section
+          className={clsx('flex-1 flex flex-col relative md:m-3 sheet paper-grain overflow-hidden', crumpling && 'crumpling')}
+          style={{ '--pen': pen.color } as React.CSSProperties}
+        >
+          {pressing && <div className="ink-press" aria-hidden />}
           {/* deckle edge — the sheet was torn from the pad */}
           <TornEdge seed={activeNote.id} className="hidden md:block w-full h-[9px] -mt-px flex-shrink-0 relative z-[2]" />
 
@@ -159,6 +169,50 @@ export const Editor: React.FC = () => {
                   {!folders.some(folder => folder.name === activeNote.folder) && <option value={activeNote.folder}>{activeNote.folder}</option>}
                 </select>
               </label>
+
+              {/* The pen cup — which pen this page is written with */}
+              <div className="relative">
+                <button
+                  onClick={() => setPenCupOpen(open => !open)}
+                  title={`The pen cup — ${pen.name}`}
+                  aria-label="Choose this page's pen"
+                  className="w-8 h-8 flex items-center justify-center rounded hover:bg-paper-dim transition-colors"
+                  style={{ color: pen.color }}
+                >
+                  <PenNib className="w-4 h-4" />
+                </button>
+                <AnimatePresence>
+                  {penCupOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setPenCupOpen(false)} />
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.12 }}
+                        className="absolute left-0 top-full mt-1 z-50 w-44 bg-paper border border-line rounded shadow-pop py-1"
+                      >
+                        <div className="px-3 pt-2 pb-1 font-mono text-2xs uppercase tracking-[0.16em] text-ink-ghost">The pen cup</div>
+                        {PEN_ORDER.map(id => {
+                          const p = PENS[id];
+                          const active = id === (activeNote.ink ?? 'ink');
+                          return (
+                            <button
+                              key={id}
+                              onClick={() => { updateNote(activeNote.id, { ink: id }); setPenCupOpen(false); }}
+                              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-paper-dim transition-colors"
+                            >
+                              <InkBlot seed={`pen:${id}`} size={16} color={p.color} opacity={0.8} satellites={1} />
+                              <span className="flex-1 font-sans text-xs" style={{ color: p.color }}>{p.name}</span>
+                              {active && <PenNib className="w-3 h-3 text-ink-faint" />}
+                            </button>
+                          );
+                        })}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
 
               <div className="hidden sm:flex items-center gap-1 flex-wrap">
                 {activeNote.tags.map(tag => (
@@ -230,7 +284,13 @@ export const Editor: React.FC = () => {
                         <MenuItem icon={FileDown} label="Export as Markdown" onClick={() => { downloadFile(`${slugify(activeNote.title)}.md`, noteToMarkdown(activeNote)); setMenuOpen(false); }} />
                         <MenuItem icon={Printer} label="Print the page" onClick={() => { setMenuOpen(false); window.print(); }} />
                         <div className="h-px bg-line my-1" />
-                        <MenuItem icon={Trash2} label="Move to trash" danger onClick={() => { trashNote(activeNote.id); setMenuOpen(false); }} />
+                        <MenuItem icon={Trash2} label="Move to trash" danger onClick={() => {
+                          const id = activeNote.id;
+                          setMenuOpen(false);
+                          setCrumpling(true);
+                          // The sheet crumples into the basket, then the store drops it.
+                          setTimeout(() => trashNote(id), 460);
+                        }} />
                       </motion.div>
                     </>
                   )}
@@ -243,20 +303,21 @@ export const Editor: React.FC = () => {
           <div ref={scrollRef} onScroll={trackScroll} className={clsx('flex-1 overflow-y-auto custom-scrollbar', editorClasses)}>
             <div className="max-w-[42rem] mx-auto w-full px-6 md:px-10 pt-10 pb-40">
               <div className="relative">
-                {dropLanded && <span className="absolute -left-1 -top-3"><InkDrop seed={activeNote.id} size={30} /></span>}
+                {dropLanded && <span className="absolute -left-1 -top-3"><InkDrop seed={activeNote.id} size={30} color={pen.color} /></span>}
                 <input
-                  className="w-full font-serif text-[2.1rem] md:text-[2.4rem] font-semibold text-ink border-none focus:ring-0 p-0 mb-1 placeholder:text-ink-ghost/50 leading-[1.15] tracking-[-0.015em] bg-transparent"
+                  className="w-full font-serif text-[2.1rem] md:text-[2.4rem] font-semibold border-none focus:ring-0 p-0 mb-1 placeholder:text-ink-ghost/50 leading-[1.15] tracking-[-0.015em] bg-transparent"
+                  style={{ color: 'var(--pen)' }}
                   type="text"
                   value={activeNote.title}
                   onChange={e => { updateNote(activeNote.id, { title: e.target.value }); triggerSave(); }}
                   placeholder="Untitled"
                   aria-label="Note title"
                 />
-                <Squiggle key={activeNote.id} seed={`title:${activeNote.id}`} width={180} color="var(--color-ink-ghost)" className="block opacity-50 mb-3" draw />
+                <Squiggle key={activeNote.id} seed={`title:${activeNote.id}`} width={180} color={pen.color} className="block opacity-60 mb-3" draw />
               </div>
 
               <div className="flex items-center gap-x-4 gap-y-1 mb-8 font-mono text-2xs text-ink-ghost flex-wrap">
-                <span>edited {formatDistanceToNow(activeNote.lastModified, { addSuffix: true })}</span>
+                <span>{now - activeNote.lastModified < 8 * 60 * 1000 ? 'still wet' : `edited ${formatDistanceToNow(activeNote.lastModified, { addSuffix: true })}`}</span>
                 <span>{activeNote.wordCount || 0} words</span>
                 <span>{Math.max(1, Math.ceil((activeNote.wordCount || 0) / 220))} min read</span>
                 <span>written {format(activeNote.createdAt, 'MMM d')}</span>
@@ -304,6 +365,9 @@ export const Editor: React.FC = () => {
                   // restored impression or the next keystroke overwrites it.
                   if (draft) editor?.commands.setContent(sanitizeDoc(draft.content));
                   setDraftsOpen(false);
+                  // The blotter presses the old words back onto the page.
+                  setPressing(true);
+                  setTimeout(() => setPressing(false), 600);
                 }}
                 onClose={() => setDraftsOpen(false)}
               />
@@ -343,8 +407,8 @@ export const Editor: React.FC = () => {
           {/* A few flecks the nib threw, dried into the corner */}
           <Spatter seed={activeNote.id} size={90} className="absolute bottom-24 right-6 md:right-10 pointer-events-none z-[2]" opacity={0.28} />
 
-          {/* Ink toolbar */}
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1.5 bg-ink rounded-md shadow-pop z-30 max-w-[calc(100vw-2rem)] overflow-x-auto scrollbar-none">
+          {/* Ink toolbar — rises as the sheet is picked up */}
+          <div key={activeNote.id} className="inkbar absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1.5 bg-ink rounded-md shadow-pop z-30 max-w-[calc(100vw-2rem)] overflow-x-auto scrollbar-none">
             <ToolbarButton editor={editor} icon="undo" title="Undo" onAction={e => e.chain().focus().undo().run()} />
             <ToolbarButton editor={editor} icon="redo" title="Redo" onAction={e => e.chain().focus().redo().run()} />
             <div className="w-px h-4 bg-paper/15 mx-1 flex-shrink-0" />

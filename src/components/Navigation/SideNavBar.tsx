@@ -41,6 +41,8 @@ export const SideNavBar: React.FC = () => {
   const now = useNow(60_000);
   const today = todayKey(new Date(now));
   const inkedToday = notes.filter(n => !n.trashedAt && todayKey(new Date(n.lastModified)) === today).length;
+  // Every save lands a drop in the well — this changes on each write.
+  const lastWrite = notes.reduce((latest, n) => Math.max(latest, n.lastModified), 0);
 
   const submitFolder = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -183,7 +185,7 @@ export const SideNavBar: React.FC = () => {
 
         {/* The ink well — how much page got wet today */}
         <div className="flex items-center gap-2.5 px-4 pt-3 pb-1">
-          <InkWell level={inkedToday / 4} className="w-[26px] h-[30px] flex-shrink-0" />
+          <InkWell level={inkedToday / 4} pulse={lastWrite} className="w-[26px] h-[30px] flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="font-mono text-2xs text-ink-ghost leading-tight">today's ink</p>
             <p className="font-mono text-2xs text-ink-soft tabular-nums leading-tight">
