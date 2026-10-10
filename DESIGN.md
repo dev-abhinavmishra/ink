@@ -84,6 +84,8 @@ back out". Errors state facts and fixes.
   no sticky notes, no index-card grids.
 - No gradients, no glassmorphism, no staggered fade-up entrances, no uppercase
   tracking-widest labels, no italic headers.
+  Exception: transient ink physics — the press flash, a drop — may bloom
+  radially; that's ink spreading through paper, not chrome decoration.
 - Motion answers actions only (open, dismiss, undo, ink drying): ≤ 200ms UI,
   ≤ 900ms ink, opacity/transform/filter only, `prefers-reduced-motion`
   collapses everything.

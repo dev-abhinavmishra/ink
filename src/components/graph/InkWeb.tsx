@@ -350,6 +350,11 @@ export const InkWeb: React.FC = () => {
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onPointerCancel={onPointerUp}
+              /* An uncaptured pointer that slips off the sheet may release
+               * outside and never send pointerup here — drop it from the
+               * finger count so the next touch isn't read as a phantom pinch. */
+              onPointerLeave={onPointerUp}
+              onLostPointerCapture={onPointerUp}
               onClick={() => { suppressClickRef.current = false; }}
               style={{ cursor: dragging ? 'grabbing' : 'grab' }}
             >

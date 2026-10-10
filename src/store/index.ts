@@ -83,6 +83,9 @@ type AppState = {
   sortOrder: SortOrder;
   prefs: Prefs;
   notice: Notice | null;
+  /** Monotonic write counter — the well pulses on it. Session-only (not
+   * persisted): timestamps can lie (imports, future dates), a counter can't. */
+  writeSeq: number;
   // Actions
   addNote: (note?: Partial<Omit<Note, 'id' | 'lastModified' | 'createdAt'>>) => string;
   updateNote: (id: string, updates: Partial<Note>) => void;
@@ -188,6 +191,7 @@ export const useStore = create<AppState>()(
       notes: initialNotes,
       folders: initialFolders,
       drafts: {},
+      writeSeq: 0,
       activeNoteId: 'seed-1',
       activeFolder: 'All Notes',
       searchQuery: '',
@@ -255,6 +259,7 @@ export const useStore = create<AppState>()(
             note.id === id ? { ...note, ...updates, ...(written ? { lastModified: Date.now() } : {}) } : note
           ),
           drafts,
+          writeSeq: written ? state.writeSeq + 1 : state.writeSeq,
         };
       }),
 
@@ -438,6 +443,17 @@ export const useStore = create<AppState>()(
         const candidates = Array.isArray(raw) ? raw : (raw as { notes?: unknown[] })?.notes;
         if (!Array.isArray(candidates)) return 0;
         const existingIds = new Set(get().notes.map(n => n.id));
+        // Canonical folder casing: an existing drawer wins; otherwise the
+        // first-seen spelling does — "Drafts" and "drafts" must not become
+        // two indistinguishable shelves with split collections.
+        const canon = new Map<string, string>();
+        for (const f of get().folders) canon.set(f.name.toLowerCase(), f.name);
+        const canonFolder = (raw: unknown): string => {
+          const name = typeof raw === 'string' && raw ? raw : 'Work';
+          const lower = name.toLowerCase();
+          if (!canon.has(lower)) canon.set(lower, name);
+          return canon.get(lower)!;
+        };
         const imported: Note[] = [];
         for (const item of candidates) {
           const note = item as Partial<Note>;
@@ -454,7 +470,7 @@ export const useStore = create<AppState>()(
             lastModified: typeof note.lastModified === 'number' ? note.lastModified : Date.now(),
             createdAt: typeof note.createdAt === 'number' ? note.createdAt : Date.now(),
             isPinned: Boolean(note.isPinned),
-            folder: typeof note.folder === 'string' && note.folder ? note.folder : 'Work',
+            folder: canonFolder(note.folder),
             wordCount: typeof note.wordCount === 'number' ? note.wordCount : 0,
             trashedAt: null,
             dailyKey: null,

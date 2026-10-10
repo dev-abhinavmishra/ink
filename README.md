@@ -32,7 +32,8 @@ every page touched today.
   fountain blue, editor's red, or walnut brown. The pen colors the page's
   title, its blot in the list and the web, the drop that lands when the
   page opens, and even the dashed vein the web draws toward unwritten
-  pages. Journals are always written in fountain blue.
+  pages. Journals are dipped in fountain blue by default — the pen cup
+  can always re-ink them.
 - **The ink web** — a force-directed map of `[[links]]`: blots sized by
   word count, veins tapered like drawn ink, dashed circles for pages
   referenced but not yet written. Drag to pan, pinch or scroll to zoom.

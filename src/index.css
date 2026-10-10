@@ -480,7 +480,9 @@
     pointer-events: none;
   }
 
-  /* The press — the blotter stamps the restored words back down */
+  /* The press — the blotter stamps the restored words back down.
+   * (Transient ink physics exempt from the no-gradients rule — this is
+   * a bloom of ink, not chrome decoration; DESIGN.md §Rules.) */
   .ink-press {
     position: absolute;
     inset: 0;
@@ -506,18 +508,21 @@
   .ink-in {
     animation: ink-in 0.16s var(--ease-out) both;
   }
+  /* No `transform` in the `to` frame — the animation settles on the
+   * element's own transform (the [[ shelf's upward flip, the inkbar's
+   * -translate-x-1/2), which `both` fill would otherwise override. */
   @keyframes ink-in {
     from { opacity: 0; transform: translateY(-4px) scale(0.98); filter: blur(1px); }
-    to   { opacity: 1; transform: none; filter: none; }
+    to   { opacity: 1; filter: none; }
   }
 
   /* The inkbar rises into place as the sheet is picked up */
   .inkbar {
-    animation: rise-in 0.32s var(--ease-out) both;
+    animation: rise-in 0.19s var(--ease-out) both;
   }
   @keyframes rise-in {
-    from { opacity: 0; transform: translateY(7px); }
-    to   { opacity: 1; transform: none; }
+    from { opacity: 0; transform: translateX(-50%) translateY(7px); }
+    to   { opacity: 1; transform: translateX(-50%); }
   }
 }
 

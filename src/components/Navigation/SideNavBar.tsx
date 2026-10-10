@@ -41,8 +41,10 @@ export const SideNavBar: React.FC = () => {
   const now = useNow(60_000);
   const today = todayKey(new Date(now));
   const inkedToday = notes.filter(n => !n.trashedAt && todayKey(new Date(n.lastModified)) === today).length;
-  // Every save lands a drop in the well — this changes on each write.
-  const lastWrite = notes.reduce((latest, n) => Math.max(latest, n.lastModified), 0);
+  // Every save lands a drop in the well. A timestamp can't be the pulse —
+  // an imported page with a future date would freeze it forever — so the
+  // store keeps a monotonic write counter instead.
+  const lastWrite = useStore(s => s.writeSeq);
 
   const submitFolder = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
