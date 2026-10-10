@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { format } from 'date-fns';
 import { todayKey, sanitizeDoc } from '../lib/notes';
+import { PENS } from '../lib/pens';
+import type { PenId } from '../lib/pens';
 
 export type Note = {
   id: string;
@@ -12,6 +14,8 @@ export type Note = {
   createdAt: number;
   isPinned: boolean;
   folder: string;
+  /** which pen the page is written with — absent = iron-gall */
+  ink?: PenId;
   wordCount: number;
   trashedAt: number | null;
   dailyKey: string | null;
@@ -36,15 +40,52 @@ export type Notice = {
   noteId?: string;
 };
 
+/** An earlier draft — what the page said before it was rewritten.
+ *  Kept sparse (one per ~half hour of editing) so a session doesn't
+ *  fill with near-identical pages. */
+export type Draft = {
+  title: string;
+  content: string;
+  wordCount: number;
+  savedAt: number; // when that version was last touched
+};
+
+const DRAFT_GAP = 30 * 60 * 1000;
+const DRAFT_LIMIT = 12;
+
+/* localStorage fills up quietly — browsers give ~5MB and a heavy
+ * library can reach it. When a write fails, surface it once instead
+ * of silently losing keystrokes. */
+let lastStorageWarning = 0;
+const guardedStorage = {
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem: (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      const now = Date.now();
+      if (now - lastStorageWarning > 30_000) {
+        lastStorageWarning = now;
+        window.dispatchEvent(new CustomEvent('ink:storage-full'));
+      }
+    }
+  },
+  removeItem: (key: string) => localStorage.removeItem(key),
+};
+
 type AppState = {
   notes: Note[];
   folders: Folder[];
+  drafts: Record<string, Draft[]>;
   activeNoteId: string | null;
   activeFolder: string;
   searchQuery: string;
   sortOrder: SortOrder;
   prefs: Prefs;
   notice: Notice | null;
+  /** Monotonic write counter — the well pulses on it. Session-only (not
+   * persisted): timestamps can lie (imports, future dates), a counter can't. */
+  writeSeq: number;
   // Actions
   addNote: (note?: Partial<Omit<Note, 'id' | 'lastModified' | 'createdAt'>>) => string;
   updateNote: (id: string, updates: Partial<Note>) => void;
@@ -69,6 +110,7 @@ type AppState = {
   removeNoteTag: (id: string, tag: string) => void;
   updateNoteFolder: (id: string, folder: string) => void;
   setNoteTags: (id: string, tags: string[]) => void;
+  restoreDraft: (id: string, index: number) => void;
   importNotes: (raw: unknown) => number;
 };
 
@@ -148,6 +190,8 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       notes: initialNotes,
       folders: initialFolders,
+      drafts: {},
+      writeSeq: 0,
       activeNoteId: 'seed-1',
       activeFolder: 'All Notes',
       searchQuery: '',
@@ -177,6 +221,7 @@ export const useStore = create<AppState>()(
             wordCount: partial.wordCount ?? 0,
             trashedAt: null,
             dailyKey: partial.dailyKey ?? null,
+            ink: partial.ink,
           };
           return { notes: [newNote, ...state.notes], activeNoteId: newNote.id };
         });
@@ -187,10 +232,56 @@ export const useStore = create<AppState>()(
       // folders) shouldn't move a page up the "edited" lists or wet the ink.
       updateNote: (id, updates) => set(state => {
         const written = 'content' in updates || 'title' in updates || 'wordCount' in updates;
+        // The blotter keeps an impression: when the body of a page changes,
+        // file the outgoing version as a draft — at most one per half hour
+        // of writing so drafts stay *checkpoints*, not keystrokes.
+        let drafts = state.drafts;
+        if (written && 'content' in updates) {
+          const note = state.notes.find(n => n.id === id);
+          if (note && note.content !== updates.content) {
+            const existing = drafts[id] ?? [];
+            const last = existing[existing.length - 1];
+            if (!last || Date.now() - last.savedAt > DRAFT_GAP) {
+              drafts = {
+                ...drafts,
+                [id]: [...existing.slice(-(DRAFT_LIMIT - 1)), {
+                  title: note.title,
+                  content: note.content,
+                  wordCount: note.wordCount,
+                  savedAt: Date.now(),
+                }],
+              };
+            }
+          }
+        }
         return {
           notes: state.notes.map(note =>
             note.id === id ? { ...note, ...updates, ...(written ? { lastModified: Date.now() } : {}) } : note
           ),
+          drafts,
+          writeSeq: written ? state.writeSeq + 1 : state.writeSeq,
+        };
+      }),
+
+      // Press an earlier draft back onto the page. The version being
+      // replaced is itself filed first — restoring is never a loss.
+      restoreDraft: (id, index) => set(state => {
+        const note = state.notes.find(n => n.id === id);
+        const draft = state.drafts[id]?.[index];
+        if (!note || !draft) return {};
+        const list = state.drafts[id];
+        const rest = list.filter((_, i) => i !== index);
+        const currentIsNew = !list.some(d => d.content === note.content && d.title === note.title);
+        const keep = currentIsNew
+          ? [...rest, { title: note.title, content: note.content, wordCount: note.wordCount, savedAt: Date.now() }].slice(-DRAFT_LIMIT)
+          : rest;
+        return {
+          notes: state.notes.map(n => n.id === id
+            ? { ...n, title: draft.title, content: draft.content, wordCount: draft.wordCount, lastModified: Date.now() }
+            : n
+          ),
+          drafts: { ...state.drafts, [id]: keep },
+          notice: { id: Date.now(), message: 'Pressed back onto the page' },
         };
       }),
 
@@ -218,13 +309,20 @@ export const useStore = create<AppState>()(
       deleteForever: (id) => set(state => {
         const remaining = state.notes.filter(n => n.id !== id);
         const newActive = state.activeNoteId === id ? (remaining.find(n => !n.trashedAt)?.id ?? null) : state.activeNoteId;
-        return { notes: remaining, activeNoteId: newActive };
+        const drafts = { ...state.drafts };
+        delete drafts[id];
+        return { notes: remaining, activeNoteId: newActive, drafts };
       }),
 
-      emptyTrash: () => set(state => ({
-        notes: state.notes.filter(n => !n.trashedAt),
-        notice: { id: Date.now(), message: 'Wastebasket emptied' },
-      })),
+      emptyTrash: () => set(state => {
+        const drafts = { ...state.drafts };
+        for (const note of state.notes) if (note.trashedAt) delete drafts[note.id];
+        return {
+          notes: state.notes.filter(n => !n.trashedAt),
+          drafts,
+          notice: { id: Date.now(), message: 'Wastebasket emptied' },
+        };
+      }),
 
       duplicateNote: (id) => set(state => {
         const source = state.notes.find(n => n.id === id);
@@ -255,11 +353,14 @@ export const useStore = create<AppState>()(
         if (!get().folders.some(f => f.name === 'Journal')) {
           set(state => ({ folders: [...state.folders, { id: 'journal', name: 'Journal' }] }));
         }
+        // Journals are written in fountain blue — the same ink the web
+        // already draws them in.
         return get().addNote({
           title: format(new Date(), 'EEEE, MMMM d'),
           folder: 'Journal',
           tags: ['JOURNAL'],
           dailyKey: key,
+          ink: 'fountain',
           content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] }),
         });
       },
@@ -309,7 +410,9 @@ export const useStore = create<AppState>()(
 
       renameTag: (oldName, newName) => set(state => ({
         notes: state.notes.map(note => note.tags.includes(oldName)
-          ? { ...note, tags: note.tags.map(tag => tag === oldName ? newName : tag) }
+          // Dedupe — renaming onto a tag the note already carries must not
+          // leave the same tag twice (two chips, duplicate React keys).
+          ? { ...note, tags: Array.from(new Set(note.tags.map(tag => tag === oldName ? newName : tag))) }
           : note
         ),
       })),
@@ -340,6 +443,17 @@ export const useStore = create<AppState>()(
         const candidates = Array.isArray(raw) ? raw : (raw as { notes?: unknown[] })?.notes;
         if (!Array.isArray(candidates)) return 0;
         const existingIds = new Set(get().notes.map(n => n.id));
+        // Canonical folder casing: an existing drawer wins; otherwise the
+        // first-seen spelling does — "Drafts" and "drafts" must not become
+        // two indistinguishable shelves with split collections.
+        const canon = new Map<string, string>();
+        for (const f of get().folders) canon.set(f.name.toLowerCase(), f.name);
+        const canonFolder = (raw: unknown): string => {
+          const name = typeof raw === 'string' && raw ? raw : 'Work';
+          const lower = name.toLowerCase();
+          if (!canon.has(lower)) canon.set(lower, name);
+          return canon.get(lower)!;
+        };
         const imported: Note[] = [];
         for (const item of candidates) {
           const note = item as Partial<Note>;
@@ -350,24 +464,35 @@ export const useStore = create<AppState>()(
           imported.push({
             id,
             title: note.title,
+            ink: note.ink && note.ink in PENS ? note.ink : undefined,
             content: JSON.stringify(sanitizeDoc(note.content)),
             tags: Array.isArray(note.tags) ? note.tags.filter((t): t is string => typeof t === 'string') : [],
             lastModified: typeof note.lastModified === 'number' ? note.lastModified : Date.now(),
             createdAt: typeof note.createdAt === 'number' ? note.createdAt : Date.now(),
             isPinned: Boolean(note.isPinned),
-            folder: typeof note.folder === 'string' && note.folder ? note.folder : 'Work',
+            folder: canonFolder(note.folder),
             wordCount: typeof note.wordCount === 'number' ? note.wordCount : 0,
             trashedAt: null,
             dailyKey: null,
           });
         }
-        if (imported.length) set(state => ({ notes: [...imported, ...state.notes] }));
+        if (imported.length) set(state => {
+          // A note filed under a folder this desk doesn't have would be
+          // unreachable from the shelf — shelve any missing folders first.
+          const have = new Set(state.folders.map(f => f.name.toLowerCase()));
+          const missing = [...new Set(imported.map(n => n.folder))].filter(name => !have.has(name.toLowerCase()));
+          const folders = missing.length
+            ? [...state.folders, ...missing.map(name => ({ id: `${Date.now()}-${name}`, name }))]
+            : state.folders;
+          return { notes: [...imported, ...state.notes], folders };
+        });
         return imported.length;
       },
     }),
     {
       name: 'ink-notes-storage',
-      version: 3,
+      version: 4,
+      storage: createJSONStorage(() => guardedStorage),
       migrate: (persisted, version) => {
         const state = persisted as {
           notes?: Note[]; folders?: Folder[]; activeNoteId?: string | null;
@@ -377,6 +502,7 @@ export const useStore = create<AppState>()(
         const base = {
           notes: state.notes ?? [],
           folders: state.folders ?? [],
+          drafts: (state as { drafts?: Record<string, Draft[]> }).drafts ?? {},
           activeNoteId: state.activeNoteId ?? null,
           activeFolder: state.activeFolder ?? 'All Notes',
           sortOrder: state.sortOrder ?? 'modified',
@@ -401,6 +527,7 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({
         notes: state.notes,
         folders: state.folders,
+        drafts: state.drafts,
         activeNoteId: state.activeNoteId,
         activeFolder: state.activeFolder,
         sortOrder: state.sortOrder,

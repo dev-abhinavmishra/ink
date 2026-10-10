@@ -5,6 +5,7 @@ import { useNow } from '../../lib/useNow';
 import { useNavigate } from 'react-router-dom';
 import { Flame, BookText, PenLine, Folder } from 'lucide-react';
 import { InkBlot } from '../../lib/ink';
+import { penOf } from '../../lib/pens';
 
 const WEEKS = 16;
 
@@ -125,9 +126,10 @@ export const OrganizationInsights: React.FC = () => {
                 <button
                   key={note.id}
                   onClick={() => { setActiveNote(note.id); navigate('/'); }}
-                  className="w-full flex items-center gap-4 px-4 py-3 hover:bg-paper-dim/60 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-paper-dim/60 transition-colors text-left"
                 >
                   <span className="font-mono text-2xs text-ink-ghost w-5 text-right flex-shrink-0">{i + 1}</span>
+                  <InkBlot seed={note.id} size={13} satellites={0} color={penOf(note.ink).color} opacity={0.7} className="flex-shrink-0" />
                   <span className="flex-1 font-serif text-[14px] text-ink truncate">{note.title || 'Untitled'}</span>
                   <span className="font-mono text-2xs text-ink-ghost tabular-nums flex-shrink-0">{note.wordCount.toLocaleString()} words</span>
                 </button>

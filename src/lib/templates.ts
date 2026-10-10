@@ -29,6 +29,7 @@ export const NOTE_TEMPLATES: NoteTemplate[] = [
     build: () => ({
       title: '',
       tags: ['JOURNAL'],
+      ink: 'fountain',
       content: doc([
         h2('Today'),
         para(''),

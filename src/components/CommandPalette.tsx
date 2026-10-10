@@ -2,21 +2,25 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, FilePlus2, Sun, BookOpen, Users, Mic2, Lightbulb, Trash2,
+  Search, FilePlus2, Sun, BookOpen, Users, BookMarked, Lightbulb, Trash2,
   Notebook, Star, History, Tags, Crosshair, BarChart3, FolderPlus,
-  Download, Droplet, PenLine, CornerDownLeft, Folder, Spline,
+  Download, Droplet, CornerDownLeft, Folder, Spline, BookText,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore, type Note } from '../store';
 import { NOTE_TEMPLATES } from '../lib/templates';
-import { downloadFile, extractText } from '../lib/notes';
+import { downloadFile, getNoteIndex, libraryToMarkdown } from '../lib/notes';
+import { InkBlot } from '../lib/ink';
+import { penOf } from '../lib/pens';
 
 interface PaletteItem {
   id: string;
-  icon: React.ElementType;
+  icon?: React.ElementType;
   label: string;
   hint?: string;
   section: 'actions' | 'go' | 'notes';
+  /** a page's fingerprint — drawn instead of an icon when present */
+  blot?: { seed: string; color: string };
   run: () => void;
 }
 
@@ -49,8 +53,13 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
     onClose();
   };
 
+  // Flat text, parsed once per library change — search taps it instead of
+  // re-walking every note's document on every keystroke.
+  const textIndex = useMemo(() => getNoteIndex(notes), [notes]);
+
   const items = useMemo<PaletteItem[]>(() => {
     const live = notes.filter(n => !n.trashedAt);
+    const trashed = notes.filter(n => n.trashedAt);
     const q = query.trim().toLowerCase();
 
     const actions: PaletteItem[] = [
@@ -59,7 +68,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
       { id: 'today', icon: Sun, label: "Today's journal", hint: 'daily note', section: 'actions',
         run: () => { ensureDailyNote(); go('/'); } },
       ...NOTE_TEMPLATES.filter(t => t.id !== 'blank').map(t => ({
-        id: `tpl-${t.id}`, icon: t.id === 'journal' ? BookOpen : t.id === 'meeting' ? Users : t.id === 'reading' ? Mic2 : Lightbulb,
+        id: `tpl-${t.id}`, icon: t.id === 'journal' ? BookOpen : t.id === 'meeting' ? Users : t.id === 'reading' ? BookMarked : Lightbulb,
         label: `New · ${t.name}`, hint: t.hint, section: 'actions' as const,
         run: () => { addNote(t.build()); go('/'); },
       })),
@@ -67,9 +76,11 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
         run: () => setMode('folder') },
       { id: 'wetink', icon: Droplet, label: `${prefs.wetInk ? 'Dry' : 'Wet'} ink`, hint: 'words land wet on the page', section: 'actions',
         run: () => { setPrefs({ wetInk: !prefs.wetInk }); onClose(); } },
+      { id: 'bind', icon: BookText, label: 'Bind the library', hint: 'one markdown volume', section: 'actions',
+        run: () => { downloadFile('ink-library.md', libraryToMarkdown(live)); onClose(); } },
       { id: 'export', icon: Download, label: 'Export library as JSON', hint: `${live.length} notes`, section: 'actions',
         run: () => { downloadFile('ink-library.json', JSON.stringify(live, null, 2), 'application/json'); onClose(); } },
-      { id: 'trash', icon: Trash2, label: 'Open the wastebasket', hint: `${notes.filter(n => n.trashedAt).length} notes`, section: 'actions',
+      { id: 'trash', icon: Trash2, label: 'Open the wastebasket', hint: `${trashed.length} note${trashed.length === 1 ? '' : 's'}`, section: 'actions',
         run: () => go('/trash') },
     ];
 
@@ -85,7 +96,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
 
     const noteItems: PaletteItem[] = (q
       ? live.filter(n => {
-          const haystack = `${n.title} ${n.tags.join(' ')} ${extractText(n.content)}`.toLowerCase();
+          const haystack = `${n.title.toLowerCase()} ${n.tags.join(' ').toLowerCase()} ${textIndex.get(n.id)?.lower ?? ''}`;
           return q.startsWith('#')
             ? n.tags.some(t => t.toLowerCase().includes(q.slice(1)))
             : haystack.includes(q);
@@ -93,7 +104,8 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
       : [...live].sort((a, b) => b.lastModified - a.lastModified).slice(0, 5)
     ).map(note => ({
       id: `note-${note.id}`,
-      icon: note.dailyKey ? Sun : note.isPinned ? Star : PenLine,
+      icon: note.dailyKey ? Sun : note.isPinned ? Star : undefined,
+      blot: note.dailyKey || note.isPinned ? undefined : { seed: note.id, color: penOf(note.ink).color },
       label: note.title || 'Untitled',
       hint: note.folder,
       section: 'notes' as const,
@@ -107,7 +119,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
       ...noteItems,
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, notes, prefs.wetInk]);
+  }, [query, notes, prefs.wetInk, textIndex]);
 
   useEffect(() => setIndex(0), [query]);
 
@@ -213,7 +225,9 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
                         )}
                       >
                         {i === index && <span className="margin-mark" style={{ left: 6 }} />}
-                        <Icon className={clsx('w-4 h-4 flex-shrink-0', i === index ? 'text-ink' : 'text-ink-ghost')} strokeWidth={1.75} />
+                        {item.blot
+                          ? <InkBlot seed={item.blot.seed} size={14} satellites={0} color={item.blot.color} opacity={0.7} className="flex-shrink-0" />
+                          : Icon && <Icon className={clsx('w-4 h-4 flex-shrink-0', i === index ? 'text-ink' : 'text-ink-ghost')} strokeWidth={1.75} />}
                         <span className="flex-1 truncate">{item.label}</span>
                         {item.hint && <span className="font-mono text-2xs text-ink-ghost flex-shrink-0">{item.hint}</span>}
                       </button>

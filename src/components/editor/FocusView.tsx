@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store';
 import { RichEditor } from '../editor/RichEditor';
-import { findBacklinks } from '../../lib/notes';
+import { getNoteIndex, findBacklinksIndexed } from '../../lib/notes';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 import { useNavigate } from 'react-router-dom';
@@ -11,11 +11,12 @@ import {
   Bold, Italic, List, Quote, Code, Pilcrow, Timer, X, Trash2, ArrowLeft,
 } from 'lucide-react';
 import { PenRest, Squiggle } from '../../lib/ink';
+import { penOf } from '../../lib/pens';
 
 const TIMER_OPTIONS = [15, 25, 50];
 
 export const FocusView: React.FC = () => {
-  const { activeNoteId, notes, updateNote, updateNoteFolder, folders, trashNote, removeNoteTag, setActiveNote, prefs, setPrefs } = useStore();
+  const { activeNoteId, notes, updateNote, updateNoteFolder, folders, trashNote, removeNoteTag, setActiveNote, prefs, setPrefs, setNotice } = useStore();
   const activeNote = notes.find(n => n.id === activeNoteId && !n.trashedAt);
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
   const [focusMinutes, setFocusMinutes] = useState<number | null>(null);
@@ -36,8 +37,12 @@ export const FocusView: React.FC = () => {
   }, [focusMinutes, remainingSeconds]);
 
   useEffect(() => {
-    if (remainingSeconds === 0 && focusMinutes !== null) setFocusMinutes(null);
-  }, [remainingSeconds, focusMinutes]);
+    if (remainingSeconds === 0 && focusMinutes !== null) {
+      setFocusMinutes(null);
+      // The timer ran dry — say so on the desk, not just in the rail.
+      setNotice({ message: `${focusMinutes} minutes of ink — stretch, then dip again` });
+    }
+  }, [remainingSeconds, focusMinutes, setNotice]);
 
   const sessionDelta = Math.max(0, (activeNote?.wordCount ?? 0) - sessionStart.words);
 
@@ -65,9 +70,10 @@ export const FocusView: React.FC = () => {
     }
   }, [activeNote]);
 
+  const noteIndex = useMemo(() => getNoteIndex(notes), [notes]);
   const backlinks = useMemo(
-    () => (activeNote ? findBacklinks(notes, activeNote.title || '') : []),
-    [notes, activeNote]
+    () => (activeNote ? findBacklinksIndexed(notes, noteIndex, activeNote.title || '') : []),
+    [notes, noteIndex, activeNote]
   );
 
   const moveToHeading = (id: string) => {
@@ -154,6 +160,8 @@ export const FocusView: React.FC = () => {
               <div className="flex items-center gap-2 mb-8 font-mono text-2xs text-ink-ghost">
                 <span>deep work</span>
                 <span aria-hidden>·</span>
+                <span style={{ color: penOf(activeNote.ink).color }}>{penOf(activeNote.ink).name}</span>
+                <span aria-hidden>·</span>
                 <select
                   aria-label="Move note to folder"
                   value={activeNote.folder}
@@ -172,9 +180,10 @@ export const FocusView: React.FC = () => {
                 value={activeNote.title}
                 onChange={event => updateNote(activeNote.id, { title: event.target.value })}
                 placeholder="Untitled"
-                className="w-full border-0 bg-transparent p-0 font-serif text-[2.5rem] font-semibold text-ink mb-1 leading-[1.12] tracking-[-0.015em] placeholder:text-ink-ghost/50 focus:ring-0"
+                className="w-full border-0 bg-transparent p-0 font-serif text-[2.5rem] font-semibold mb-1 leading-[1.12] tracking-[-0.015em] placeholder:text-ink-ghost/50 focus:ring-0"
+                style={{ color: penOf(activeNote.ink).color }}
               />
-              <Squiggle key={activeNote.id} seed={`focus-title:${activeNote.id}`} width={200} color="var(--color-ink-ghost)" className="block opacity-40 mb-4" draw />
+              <Squiggle key={activeNote.id} seed={`focus-title:${activeNote.id}`} width={200} color={penOf(activeNote.ink).color} className="block opacity-50 mb-4" draw />
 
               <div className="flex items-center gap-x-4 gap-y-1 mb-10 font-mono text-2xs text-ink-ghost flex-wrap">
                 <span>edited {formatDistanceToNow(activeNote.lastModified, { addSuffix: true })}</span>

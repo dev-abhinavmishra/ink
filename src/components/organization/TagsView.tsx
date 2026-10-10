@@ -135,7 +135,7 @@ export const TagsView: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="font-mono text-2xs text-ink-ghost tabular-nums">{count} {count === 1 ? 'note' : 'notes'}</span>
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100 transition-opacity">
                           <button
                             aria-label={`Rename ${tag}`}
                             onClick={() => openDialog('rename', tag)}
@@ -180,7 +180,7 @@ export const TagsView: React.FC = () => {
                       </button>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="font-mono text-2xs text-ink-ghost tabular-nums">{count}</span>
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100 transition-opacity">
                           <button
                             aria-label={`Rename ${folder.name}`}
                             onClick={() => openDialog('renameFolder', folder.name)}

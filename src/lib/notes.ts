@@ -21,7 +21,7 @@ const parseDoc = (content: string): TipTapNode | null => {
  * doesn't know; ProseMirror throws on those at editor init.
  * Walk the tree and keep only what this editor can render. */
 
-const MARK_TYPES = new Set(['bold', 'italic', 'strike', 'code']);
+const MARK_TYPES = new Set(['bold', 'italic', 'strike', 'code', 'highlight', 'underline']);
 
 const plainText = (node: TipTapNode): string =>
   node.type === 'text' && typeof node.text === 'string'
@@ -140,11 +140,10 @@ export const extractText = (content: string, max = 240): string => {
   return parts.join(' ').replace(/\s+/g, ' ').trim().slice(0, max);
 };
 
-/** Pull every [[Note Title]] reference out of a document.
+/** Pull every [[Note Title]] reference out of already-flattened text.
  *  Case-insensitively deduped; the first-seen casing wins so ghosts and
  *  lookups agree on what the writer actually typed. */
-export const extractWikiLinks = (content: string): string[] => {
-  const text = extractText(content, 100000);
+export const wikiLinksFromText = (text: string): string[] => {
   const found = new Map<string, string>();
   for (const match of text.matchAll(/\[\[([^\][\n]+)\]\]/g)) {
     const title = match[1].trim();
@@ -153,12 +152,57 @@ export const extractWikiLinks = (content: string): string[] => {
   return Array.from(found.values());
 };
 
+export const extractWikiLinks = (content: string): string[] =>
+  wikiLinksFromText(extractText(content, 100000));
+
+/* ── The note index ───────────────────────────────────────────
+ * Search, backlinks and the ink web all need every note's flat text
+ * and links — parsing the same JSON three different ways on every
+ * render is the kind of thing that feels fine at 10 notes and stalls
+ * at 300. Components compute this once per notes-array change and
+ * share it around. */
+export interface NoteIndex {
+  text: string;
+  lower: string;
+  links: string[];
+}
+
+export const buildNoteIndex = (notes: Note[]): Map<string, NoteIndex> => {
+  const index = new Map<string, NoteIndex>();
+  for (const note of notes) {
+    const text = extractText(note.content, 100000);
+    index.set(note.id, { text, lower: text.toLowerCase(), links: wikiLinksFromText(text) });
+  }
+  return index;
+};
+
+/* The index keyed by the notes array itself — every mounted view that asks
+ * for one shares the same parse, so a big library is walked once per change
+ * total, not once per mounted component. */
+const indexCache = new WeakMap<Note[], Map<string, NoteIndex>>();
+export const getNoteIndex = (notes: Note[]): Map<string, NoteIndex> => {
+  let index = indexCache.get(notes);
+  if (!index) {
+    index = buildNoteIndex(notes);
+    indexCache.set(notes, index);
+  }
+  return index;
+};
+
 /** Notes that point at `title` through a [[wikilink]]. */
 export const findBacklinks = (notes: Note[], title: string): Note[] => {
   const target = title.trim().toLowerCase();
   if (!target) return [];
   return notes.filter(
     note => !note.trashedAt && extractWikiLinks(note.content).some(link => link.toLowerCase() === target)
+  );
+};
+
+/** Same lookup, but against a prebuilt index — the caller has already parsed every doc. */
+export const findBacklinksIndexed = (notes: Note[], index: Map<string, NoteIndex>, title: string): Note[] => {
+  const target = title.trim().toLowerCase() || 'untitled';
+  return notes.filter(
+    note => !note.trashedAt && (index.get(note.id)?.links ?? []).some(link => link.toLowerCase() === target)
   );
 };
 
@@ -177,6 +221,8 @@ export const noteToMarkdown = (note: Note): string => {
       else if (mark.type === 'italic') text = `*${text}*`;
       else if (mark.type === 'strike') text = `~~${text}~~`;
       else if (mark.type === 'code') text = `\`${text}\``;
+      else if (mark.type === 'highlight') text = `==${text}==`;
+      else if (mark.type === 'underline') text = `<u>${text}</u>`;
     }
     return text;
   };
@@ -238,6 +284,10 @@ export const activityByDay = (notes: Note[]): Map<string, number> => {
   return map;
 };
 
+/** Bind every live note into a single Markdown volume, separated by asterisms. */
+export const libraryToMarkdown = (notes: Note[]): string =>
+  notes.map(noteToMarkdown).join('\n\u2042\n\n');
+
 /** Consecutive days with activity, ending today or yesterday. */
 export const currentStreak = (days: Map<string, number>): number => {
   let streak = 0;
@@ -250,14 +300,4 @@ export const currentStreak = (days: Map<string, number>): number => {
   return streak;
 };
 
-/** Last n days as yyyy-mm-dd keys, oldest first. */
-export const lastNDays = (n: number): string[] => {
-  const days: string[] = [];
-  const cursor = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(cursor);
-    d.setDate(cursor.getDate() - i);
-    days.push(dayKey(d.getTime()));
-  }
-  return days;
-};
+
