@@ -352,8 +352,12 @@ export const InkWeb: React.FC = () => {
               onPointerCancel={onPointerUp}
               /* An uncaptured pointer that slips off the sheet may release
                * outside and never send pointerup here — drop it from the
-               * finger count so the next touch isn't read as a phantom pinch. */
-              onPointerLeave={onPointerUp}
+               * finger count so the next touch isn't read as a phantom
+               * pinch. But leave dragRef alone: a drag that starts at the
+               * sheet's edge legitimately leaves the svg before its first
+               * real move earns pointer capture, and killing it here would
+               * freeze edge-started pans again. */
+              onPointerLeave={(e) => pointersRef.current.delete(e.pointerId)}
               onLostPointerCapture={onPointerUp}
               onClick={() => { suppressClickRef.current = false; }}
               style={{ cursor: dragging ? 'grabbing' : 'grab' }}
