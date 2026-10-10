@@ -6,7 +6,7 @@ import clsx from 'clsx';
 import { useStore, type Draft } from '../../store';
 import { RichEditor } from '../editor/RichEditor';
 import {
-  findBacklinksIndexed, buildNoteIndex, noteToMarkdown, downloadFile, slugify,
+  findBacklinksIndexed, getNoteIndex, noteToMarkdown, downloadFile, slugify,
   sanitizeDoc, extractText, type TipTapNode,
 } from '../../lib/notes';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -50,7 +50,7 @@ export const Editor: React.FC = () => {
 
   // One parse of the whole library per change — backlinks, and anything
   // else that needs flat text, read from the index instead of re-walking JSON.
-  const noteIndex = useMemo(() => buildNoteIndex(notes), [notes]);
+  const noteIndex = useMemo(() => getNoteIndex(notes), [notes]);
 
   const backlinks = useMemo(
     () => (activeNote ? findBacklinksIndexed(notes, noteIndex, activeNote.title || '') : []),
@@ -297,7 +297,14 @@ export const Editor: React.FC = () => {
                 drafts={noteDrafts}
                 preview={draftPreview}
                 onPreview={setDraftPreview}
-                onRestore={(i) => { restoreDraft(activeNote.id, noteDrafts.length - 1 - i); setDraftsOpen(false); }}
+                onRestore={(i) => {
+                  const draft = noteDrafts[i];
+                  restoreDraft(activeNote.id, noteDrafts.length - 1 - i);
+                  // The editor keeps its own document — swap it for the
+                  // restored impression or the next keystroke overwrites it.
+                  if (draft) editor?.commands.setContent(sanitizeDoc(draft.content));
+                  setDraftsOpen(false);
+                }}
                 onClose={() => setDraftsOpen(false)}
               />
             )}

@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store';
-import { extractWikiLinks } from '../../lib/notes';
+import { getNoteIndex } from '../../lib/notes';
 import { blotPath, hashOf } from '../../lib/ink-shapes';
 import { PenRest } from '../../lib/ink';
 import { Minus, Plus, Scan } from 'lucide-react';
@@ -124,12 +124,13 @@ export const InkWeb: React.FC = () => {
     }));
     const byTitle = new Map<string, number>();
     nodes.forEach((n, i) => byTitle.set(n.label.trim().toLowerCase(), i));
+    const index = getNoteIndex(notes);
 
     const edges: WebEdge[] = [];
     const seen = new Set<string>();
     const ghosts = new Map<string, number>();
     live.forEach((note, i) => {
-      for (const target of extractWikiLinks(note.content)) {
+      for (const target of index.get(note.id)?.links ?? []) {
         const titleKey = target.toLowerCase();
         let j = byTitle.get(titleKey);
         if (j === undefined) {
@@ -201,7 +202,11 @@ export const InkWeb: React.FC = () => {
     setCam(c => {
       const k2 = Math.min(5, Math.max(0.3, c.k * factor));
       const p = toWorld(clientX, clientY);
-      return { k: k2, x: c.x + (c.k - k2) * p.x, y: c.y + (c.k - k2) * p.y };
+      // The point under the cursor in *world* space — keep it pinned as k
+      // changes: displayed = c + k·world  =>  c' = c + (k - k')·world.
+      const wx = (p.x - c.x) / c.k;
+      const wy = (p.y - c.y) / c.k;
+      return { k: k2, x: c.x + (c.k - k2) * wx, y: c.y + (c.k - k2) * wy };
     });
   };
 

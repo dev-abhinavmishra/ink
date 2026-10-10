@@ -9,7 +9,7 @@ import {
 import clsx from 'clsx';
 import { useStore, type Note } from '../store';
 import { NOTE_TEMPLATES } from '../lib/templates';
-import { downloadFile, buildNoteIndex, libraryToMarkdown } from '../lib/notes';
+import { downloadFile, getNoteIndex, libraryToMarkdown } from '../lib/notes';
 
 interface PaletteItem {
   id: string;
@@ -51,7 +51,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
 
   // Flat text, parsed once per library change — search taps it instead of
   // re-walking every note's document on every keystroke.
-  const textIndex = useMemo(() => buildNoteIndex(notes), [notes]);
+  const textIndex = useMemo(() => getNoteIndex(notes), [notes]);
 
   const items = useMemo<PaletteItem[]>(() => {
     const live = notes.filter(n => !n.trashedAt);

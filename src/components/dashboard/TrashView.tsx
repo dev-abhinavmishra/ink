@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useStore } from '../../store';
-import { buildNoteIndex } from '../../lib/notes';
+import { getNoteIndex } from '../../lib/notes';
 import { formatDistanceToNow } from 'date-fns';
 import { Undo2, Trash2, Trash } from 'lucide-react';
 import { hashOf } from '../../lib/ink-shapes';
@@ -11,7 +11,7 @@ export const TrashView: React.FC = () => {
   const trashed = notes
     .filter(n => n.trashedAt)
     .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
-  const index = useMemo(() => buildNoteIndex(notes), [notes]);
+  const index = useMemo(() => getNoteIndex(notes), [notes]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-desk custom-scrollbar">

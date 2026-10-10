@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore, type Note, type SortOrder } from '../../store';
-import { buildNoteIndex, type NoteIndex } from '../../lib/notes';
+import { getNoteIndex, type NoteIndex } from '../../lib/notes';
 import { useNow } from '../../lib/useNow';
 import clsx from 'clsx';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -46,7 +46,7 @@ export const NoteList: React.FC<NoteListProps> = ({ filter = 'all', title }) => 
   const [sortOpen, setSortOpen] = useState(false);
   const now = useNow();
   // One flat-text pass over the library — search and snippets read the index.
-  const index = useMemo(() => buildNoteIndex(notes), [notes]);
+  const index = useMemo(() => getNoteIndex(notes), [notes]);
 
   const live = notes.filter(n => !n.trashedAt);
 

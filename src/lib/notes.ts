@@ -176,6 +176,19 @@ export const buildNoteIndex = (notes: Note[]): Map<string, NoteIndex> => {
   return index;
 };
 
+/* The index keyed by the notes array itself — every mounted view that asks
+ * for one shares the same parse, so a big library is walked once per change
+ * total, not once per mounted component. */
+const indexCache = new WeakMap<Note[], Map<string, NoteIndex>>();
+export const getNoteIndex = (notes: Note[]): Map<string, NoteIndex> => {
+  let index = indexCache.get(notes);
+  if (!index) {
+    index = buildNoteIndex(notes);
+    indexCache.set(notes, index);
+  }
+  return index;
+};
+
 /** Notes that point at `title` through a [[wikilink]]. */
 export const findBacklinks = (notes: Note[], title: string): Note[] => {
   const target = title.trim().toLowerCase();
@@ -208,6 +221,8 @@ export const noteToMarkdown = (note: Note): string => {
       else if (mark.type === 'italic') text = `*${text}*`;
       else if (mark.type === 'strike') text = `~~${text}~~`;
       else if (mark.type === 'code') text = `\`${text}\``;
+      else if (mark.type === 'highlight') text = `==${text}==`;
+      else if (mark.type === 'underline') text = `<u>${text}</u>`;
     }
     return text;
   };

@@ -239,7 +239,7 @@ export const useStore = create<AppState>()(
                   title: note.title,
                   content: note.content,
                   wordCount: note.wordCount,
-                  savedAt: note.lastModified,
+                  savedAt: Date.now(),
                 }],
               };
             }
@@ -263,7 +263,7 @@ export const useStore = create<AppState>()(
         const rest = list.filter((_, i) => i !== index);
         const currentIsNew = !list.some(d => d.content === note.content && d.title === note.title);
         const keep = currentIsNew
-          ? [...rest, { title: note.title, content: note.content, wordCount: note.wordCount, savedAt: note.lastModified }].slice(-DRAFT_LIMIT)
+          ? [...rest, { title: note.title, content: note.content, wordCount: note.wordCount, savedAt: Date.now() }].slice(-DRAFT_LIMIT)
           : rest;
         return {
           notes: state.notes.map(n => n.id === id

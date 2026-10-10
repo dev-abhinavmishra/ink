@@ -92,18 +92,24 @@ const openLinkAt = (editor: Editor): { from: number; to: number; query: string }
   const between = before.slice(openIdx + 2);
   if (between.includes(']') || between.includes('\n') || between.length > 80) return null;
   // Translate the textContent offset into a doc offset — only works when the
-  // `[[` sits entirely inside one text node (it's not split by marks).
+  // `[[` sits entirely inside one text node (it's not split by marks). A hard
+  // break inside the link window also ends it: textContent can't see breaks,
+  // so a `[[` on an earlier Shift+Enter line must not reach past the caret.
   const parentStart = $from.start();
   let t = 0;
   let from = -1;
+  let crossedBreak = false;
   $from.parent.forEach((child, offset) => {
-    if (!child.isText || !child.text) return;
+    if (!child.isText || !child.text) {
+      if (t > openIdx && t <= textOffset) crossedBreak = true;
+      return;
+    }
     if (from < 0 && openIdx >= t && openIdx + 2 <= t + child.text.length) {
       from = parentStart + offset + (openIdx - t);
     }
     t += child.text.length;
   });
-  if (from < 0) return null;
+  if (from < 0 || crossedBreak) return null;
   return { from, to: $from.pos, query: between };
 };
 
