@@ -1,9 +1,9 @@
 import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { Download, Upload, Check } from 'lucide-react';
+import { Download, Upload, Check, BookText } from 'lucide-react';
 import { useStore, type Prefs } from '../store';
-import { downloadFile } from '../lib/notes';
+import { downloadFile, libraryToMarkdown } from '../lib/notes';
 
 const textSizes: { id: Prefs['editorTextSize']; label: string; sample: string }[] = [
   { id: 'sm', label: 'Small', sample: 'Aa' },
@@ -18,6 +18,11 @@ export const SettingsPopover: React.FC<{ open: boolean; onClose: () => void }> =
   const exportAll = () => {
     const live = notes.filter(n => !n.trashedAt);
     downloadFile('ink-library.json', JSON.stringify(live, null, 2), 'application/json');
+  };
+
+  const bindLibrary = () => {
+    const live = notes.filter(n => !n.trashedAt);
+    downloadFile('ink-library.md', libraryToMarkdown(live));
   };
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,6 +110,14 @@ export const SettingsPopover: React.FC<{ open: boolean; onClose: () => void }> =
               >
                 <Upload className="w-3.5 h-3.5" strokeWidth={1.75} />
                 Import
+              </button>
+              <button
+                onClick={bindLibrary}
+                title="Every page as one Markdown volume"
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-ink border border-line rounded py-1.5 hover:bg-paper-dim transition-colors"
+              >
+                <BookText className="w-3.5 h-3.5" strokeWidth={1.75} />
+                Bind
               </button>
               <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
             </div>

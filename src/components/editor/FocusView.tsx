@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store';
 import { RichEditor } from '../editor/RichEditor';
-import { findBacklinks } from '../../lib/notes';
+import { buildNoteIndex, findBacklinksIndexed } from '../../lib/notes';
 import { formatDistanceToNow, format } from 'date-fns';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 import { useNavigate } from 'react-router-dom';
@@ -65,9 +65,10 @@ export const FocusView: React.FC = () => {
     }
   }, [activeNote]);
 
+  const noteIndex = useMemo(() => buildNoteIndex(notes), [notes]);
   const backlinks = useMemo(
-    () => (activeNote ? findBacklinks(notes, activeNote.title || '') : []),
-    [notes, activeNote]
+    () => (activeNote ? findBacklinksIndexed(notes, noteIndex, activeNote.title || '') : []),
+    [notes, noteIndex, activeNote]
   );
 
   const moveToHeading = (id: string) => {

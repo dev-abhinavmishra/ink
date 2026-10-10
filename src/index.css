@@ -209,6 +209,25 @@
   .ProseMirror em { font-style: italic; }
   .ProseMirror s { text-decoration: line-through; text-decoration-color: var(--color-pencil); opacity: 0.65; }
 
+  /* The editor's pencil — a soft red wash swept under the words */
+  .ProseMirror mark {
+    background: linear-gradient(100deg, transparent 0%, var(--color-pencil-wash) 4%, var(--color-pencil-wash) 96%, transparent 100%);
+    color: var(--color-pencil-deep);
+    padding: 0 0.18em;
+    border-radius: 2px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  /* Underline drawn like a ruled line — not the browser's flat one */
+  .ProseMirror u {
+    text-decoration: underline;
+    text-decoration-color: var(--color-ink-faint);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3.5px;
+    text-decoration-skip-ink: auto;
+  }
+
   /* [[wiki links]] — fountain-pen blue, underlined by hand */
   .ProseMirror .wikilink {
     color: var(--color-fountain);
@@ -396,6 +415,52 @@
     background: var(--color-pencil);
     border-radius: 2px 0 0 2px;
   }
+
+  /* The ink line — a thin trace that soaks down the sheet's right edge
+   * as you read, so long pages show how far the ink has run. */
+  .ink-depth {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 3px;
+    z-index: 5;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--color-line) 60%, transparent);
+  }
+  .ink-depth > span {
+    display: block;
+    width: 100%;
+    background: linear-gradient(to bottom, var(--color-ink-soft), var(--color-ink) 70%, var(--color-pencil));
+    border-radius: 0 0 2px 2px;
+    transition: height 0.18s var(--ease-out);
+  }
+}
+
+/* ── Print — lift the sheet off the desk ───────────────────────
+ * A hidden portal beside the app renders the manuscript plainly;
+ * on paper only it exists — the desk stays behind. */
+.print-page { display: none; }
+@media print {
+  body { background: white; }
+  body > *:not(.print-page) { display: none !important; }
+  .print-page {
+    display: block !important;
+    font-family: 'Spectral', Georgia, serif;
+    color: var(--color-ink);
+  }
+  .print-page h1 { font-size: 2rem; font-weight: 600; margin-bottom: 0.35em; }
+  .print-page h2 { font-size: 1.4rem; font-weight: 600; margin: 1.2em 0 0.4em; }
+  .print-page h3 { font-size: 1.1rem; font-weight: 600; margin: 1.1em 0 0.3em; }
+  .print-page p { font-size: 1.02rem; line-height: 1.75; margin-bottom: 0.85em; }
+  .print-page ul { list-style: disc; padding-left: 1.5em; }
+  .print-page ol { list-style: decimal; padding-left: 1.5em; }
+  .print-page li { margin-bottom: 0.3em; }
+  .print-page blockquote { border-left: 2px solid #999; padding-left: 1em; font-style: italic; margin: 1.2em 0; }
+  .print-page pre { font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; background: #f2f2f0; padding: 1em; white-space: pre-wrap; }
+  .print-page code { font-family: 'IBM Plex Mono', monospace; font-size: 0.85em; }
+  .print-page .print-asterism { text-align: center; letter-spacing: 0.35em; margin: 1.6em 0; color: #777; }
+  .print-page .print-colophon { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: #888; margin-top: 3em; }
+  @page { margin: 2.2cm 2cm; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -87,3 +87,33 @@ back out". Errors state facts and fixes.
 - Motion answers actions only (open, dismiss, undo, ink drying): ≤ 200ms UI,
   ≤ 900ms ink, opacity/transform/filter only, `prefers-reduced-motion`
   collapses everything.
+
+## This season's marks
+
+- **The `[[` shelf** — an open `[[` slides a page-picker under the caret
+  (clamped to the sheet, flips upward when the page runs out). `↵` links,
+  `esc` keeps writing. Naming an unwritten page offers to *start* it — the
+  blank page is filed away, never navigated to.
+- **Pencil marks in the schema** — `mark` renders as a `pencil-wash` wash
+  swept under the words (`box-decoration-break: clone` so wraps keep the
+  wash); `u` is a hand-ruled line, offset 3.5px, `ink-faint`, never the
+  browser's flat underline.
+- **Earlier drafts** — the blotter keeps ≤12 impressions per page (one per
+  half hour of writing). The drawer lists slips newest-first with a preview
+  pane rendered by `PrintDoc`; restoring presses the impression back onto
+  the page and re-files the current version if it differs.
+- **Print** — printing uses a hidden portal (`print-page`) rendered plainly
+  from the sanitized doc. `@media print` hides everything but it; only the
+  manuscript goes to paper, with a colophon.
+- **The ink line** — a 3px trace on the sheet's right edge fills as you
+  scroll (ink → pencil at the tip). Written straight to the DOM, no React
+  renders per scroll event.
+- **Ghost veins** — veins to unwritten pages draw their ribbon faint *plus*
+  a dashed centreline (`veinCenter`), so "not yet inked" reads at a glance.
+  The web pans (drag) and zooms (wheel, ±, refit); labels hide on busy webs
+  until you lean in or hover.
+- **`buildNoteIndex`** — one `extractText`+`[[link]]` pass per library
+  change; search, backlinks, snippets, trash previews and the suggester all
+  read it. Never parse per row per keystroke.
+- **The desk is only so big** — `guardedStorage` catches a full write and
+  surfaces a notice (throttled 30s) instead of swallowing it.

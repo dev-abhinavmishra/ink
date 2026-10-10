@@ -1,14 +1,19 @@
 import React, { useState, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
-import { useStore } from '../../store';
+import { useStore, type Draft } from '../../store';
 import { RichEditor } from '../editor/RichEditor';
-import { findBacklinks, noteToMarkdown, downloadFile, slugify } from '../../lib/notes';
+import {
+  findBacklinksIndexed, buildNoteIndex, noteToMarkdown, downloadFile, slugify,
+  sanitizeDoc, extractText, type TipTapNode,
+} from '../../lib/notes';
 import { formatDistanceToNow, format } from 'date-fns';
 import {
   ArrowLeft, FolderOpen, Pin, Copy, FileDown, Link2, Trash2,
-  MoreHorizontal, Plus, CornerLeftUp, Droplet,
+  MoreHorizontal, Plus, CornerLeftUp, Droplet, Printer, Stamp,
+  History, Undo2, Redo2, Highlighter, Underline,
 } from 'lucide-react';
 import { InkDrop, PenRest, Spatter, Squiggle, TornEdge } from '../../lib/ink';
 
@@ -17,7 +22,8 @@ type SaveState = 'idle' | 'saving' | 'saved';
 export const Editor: React.FC = () => {
   const {
     activeNoteId, notes, updateNote, updateNoteFolder, folders, setNoteTags,
-    togglePin, duplicateNote, trashNote, setActiveNote, prefs,
+    togglePin, duplicateNote, trashNote, setActiveNote, prefs, drafts,
+    restoreDraft,
   } = useStore();
   const activeNote = notes.find(n => n.id === activeNoteId);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -27,7 +33,11 @@ export const Editor: React.FC = () => {
   const [tagInputOpen, setTagInputOpen] = useState(false);
   const [tagValue, setTagValue] = useState('');
   const [dropLanded, setDropLanded] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [draftPreview, setDraftPreview] = useState(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const depthRef = useRef<HTMLSpanElement>(null);
 
   React.useEffect(() => {
     if (!activeNote) { setDropLanded(false); return; }
@@ -38,9 +48,18 @@ export const Editor: React.FC = () => {
     return () => clearTimeout(t);
   }, [activeNote?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // One parse of the whole library per change — backlinks, and anything
+  // else that needs flat text, read from the index instead of re-walking JSON.
+  const noteIndex = useMemo(() => buildNoteIndex(notes), [notes]);
+
   const backlinks = useMemo(
-    () => (activeNote ? findBacklinks(notes, activeNote.title || '') : []),
-    [notes, activeNote]
+    () => (activeNote ? findBacklinksIndexed(notes, noteIndex, activeNote.title || '') : []),
+    [notes, noteIndex, activeNote]
+  );
+
+  const noteDrafts = useMemo(
+    () => (activeNote ? [...(drafts[activeNote.id] ?? [])].reverse() : []),
+    [drafts, activeNote]
   );
 
   const triggerSave = () => {
@@ -63,6 +82,11 @@ export const Editor: React.FC = () => {
     setLinkPickerOpen(false);
   };
 
+  const stampDate = () => {
+    editor?.chain().focus().insertContent(format(new Date(), 'EEEE, MMMM d, yyyy')).run();
+    setMenuOpen(false);
+  };
+
   const submitTag = (e: React.FormEvent) => {
     e.preventDefault();
     const tag = tagValue.trim().replace(/^#/, '').toUpperCase();
@@ -72,6 +96,22 @@ export const Editor: React.FC = () => {
     setTagValue('');
     setTagInputOpen(false);
   };
+
+  // The ink line tracks how far down the sheet the reader has gone —
+  // direct DOM write, not state, so scrolling costs nothing.
+  const trackScroll = () => {
+    const el = scrollRef.current;
+    const bar = depthRef.current;
+    if (!el || !bar) return;
+    const range = el.scrollHeight - el.clientHeight;
+    const pct = range <= 8 ? 1 : Math.min(1, Math.max(0, el.scrollTop / range));
+    bar.style.height = `${(pct * 100).toFixed(1)}%`;
+  };
+
+  React.useEffect(() => {
+    depthRef.current?.style.setProperty('height', '0%');
+    requestAnimationFrame(trackScroll);
+  }, [activeNote?.id]);
 
   const liveNotes = notes.filter(n => !n.trashedAt && n.id !== activeNote?.id);
 
@@ -175,12 +215,20 @@ export const Editor: React.FC = () => {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
                         transition={{ duration: 0.12 }}
-                        className="absolute right-0 top-full mt-1 z-50 w-52 bg-paper border border-line rounded shadow-pop py-1"
+                        className="absolute right-0 top-full mt-1 z-50 w-56 bg-paper border border-line rounded shadow-pop py-1"
                       >
                         <MenuItem icon={Pin} label={activeNote.isPinned ? 'Unpin' : 'Pin to top'} onClick={() => { togglePin(activeNote.id); setMenuOpen(false); }} />
                         <MenuItem icon={Copy} label="Carbon copy" onClick={() => { duplicateNote(activeNote.id); setMenuOpen(false); }} />
                         <MenuItem icon={Link2} label="Link to a note…" onClick={() => { setMenuOpen(false); setLinkPickerOpen(true); }} />
+                        <MenuItem icon={Stamp} label="Stamp the date" onClick={stampDate} />
+                        <div className="h-px bg-line my-1" />
+                        <MenuItem
+                          icon={History}
+                          label={`Earlier drafts${noteDrafts.length ? ` · ${noteDrafts.length}` : ''}`}
+                          onClick={() => { setMenuOpen(false); setDraftPreview(0); setDraftsOpen(true); }}
+                        />
                         <MenuItem icon={FileDown} label="Export as Markdown" onClick={() => { downloadFile(`${slugify(activeNote.title)}.md`, noteToMarkdown(activeNote)); setMenuOpen(false); }} />
+                        <MenuItem icon={Printer} label="Print the page" onClick={() => { setMenuOpen(false); window.print(); }} />
                         <div className="h-px bg-line my-1" />
                         <MenuItem icon={Trash2} label="Move to trash" danger onClick={() => { trashNote(activeNote.id); setMenuOpen(false); }} />
                       </motion.div>
@@ -192,7 +240,7 @@ export const Editor: React.FC = () => {
           </div>
 
           {/* The page */}
-          <div className={clsx('flex-1 overflow-y-auto custom-scrollbar', editorClasses)}>
+          <div ref={scrollRef} onScroll={trackScroll} className={clsx('flex-1 overflow-y-auto custom-scrollbar', editorClasses)}>
             <div className="max-w-[42rem] mx-auto w-full px-6 md:px-10 pt-10 pb-40">
               <div className="relative">
                 {dropLanded && <span className="absolute -left-1 -top-3"><InkDrop seed={activeNote.id} size={30} /></span>}
@@ -212,6 +260,14 @@ export const Editor: React.FC = () => {
                 <span>{activeNote.wordCount || 0} words</span>
                 <span>{Math.max(1, Math.ceil((activeNote.wordCount || 0) / 220))} min read</span>
                 <span>written {format(activeNote.createdAt, 'MMM d')}</span>
+                {noteDrafts.length > 0 && (
+                  <button
+                    onClick={() => { setDraftPreview(0); setDraftsOpen(true); }}
+                    className="text-fountain hover:text-ink transition-colors"
+                  >
+                    {noteDrafts.length} earlier {noteDrafts.length === 1 ? 'draft' : 'drafts'}
+                  </button>
+                )}
               </div>
 
               <RichEditor
@@ -224,10 +280,26 @@ export const Editor: React.FC = () => {
             </div>
           </div>
 
+          {/* How deep the ink has run — a reading-depth trace on the sheet's edge */}
+          <div className="ink-depth hidden md:block"><span ref={depthRef} style={{ height: '0%' }} /></div>
+
           {/* Backlinks — bottom-left drawer, only when they exist */}
           <AnimatePresence>
             {backlinks.length > 0 && (
               <BacklinksTray backlinks={backlinks} onOpen={id => { setActiveNote(id); }} />
+            )}
+          </AnimatePresence>
+
+          {/* Earlier drafts — the blotter remembers what the page used to say */}
+          <AnimatePresence>
+            {draftsOpen && (
+              <DraftsDrawer
+                drafts={noteDrafts}
+                preview={draftPreview}
+                onPreview={setDraftPreview}
+                onRestore={(i) => { restoreDraft(activeNote.id, noteDrafts.length - 1 - i); setDraftsOpen(false); }}
+                onClose={() => setDraftsOpen(false)}
+              />
             )}
           </AnimatePresence>
 
@@ -265,29 +337,216 @@ export const Editor: React.FC = () => {
           <Spatter seed={activeNote.id} size={90} className="absolute bottom-24 right-6 md:right-10 pointer-events-none z-[2]" opacity={0.28} />
 
           {/* Ink toolbar */}
-          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1.5 bg-ink rounded-md shadow-pop z-30">
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 px-1.5 py-1.5 bg-ink rounded-md shadow-pop z-30 max-w-[calc(100vw-2rem)] overflow-x-auto scrollbar-none">
+            <ToolbarButton editor={editor} icon="undo" title="Undo" onAction={e => e.chain().focus().undo().run()} />
+            <ToolbarButton editor={editor} icon="redo" title="Redo" onAction={e => e.chain().focus().redo().run()} />
+            <div className="w-px h-4 bg-paper/15 mx-1 flex-shrink-0" />
             <ToolbarButton editor={editor} icon="format_bold" title="Bold" onAction={e => e.chain().focus().toggleBold().run()} />
             <ToolbarButton editor={editor} icon="format_italic" title="Italic" onAction={e => e.chain().focus().toggleItalic().run()} />
-            <div className="w-px h-4 bg-paper/15 mx-1" />
+            <ToolbarButton editor={editor} icon="highlight" title="Mark it" onAction={e => e.chain().focus().toggleHighlight().run()} />
+            <ToolbarButton editor={editor} icon="underline" title="Underline" onAction={e => e.chain().focus().toggleUnderline().run()} />
+            <div className="w-px h-4 bg-paper/15 mx-1 flex-shrink-0" />
             <ToolbarButton editor={editor} icon="format_list_bulleted" title="List" onAction={e => e.chain().focus().toggleBulletList().run()} />
             <ToolbarButton editor={editor} icon="format_quote" title="Quote" onAction={e => e.chain().focus().toggleBlockquote().run()} />
             <ToolbarButton editor={editor} icon="code" title="Code" onAction={e => e.chain().focus().toggleCode().run()} />
-            <div className="w-px h-4 bg-paper/15 mx-1" />
+            <div className="w-px h-4 bg-paper/15 mx-1 flex-shrink-0" />
+            <button
+              type="button"
+              title="Stamp the date"
+              aria-label="Stamp the date"
+              onClick={stampDate}
+              disabled={!editor}
+              className="w-8 h-8 rounded-sm flex items-center justify-center text-paper/60 hover:text-paper hover:bg-paper/10 disabled:opacity-30 transition-colors flex-shrink-0"
+            >
+              <Stamp className="w-4 h-4" strokeWidth={1.75} />
+            </button>
             <button
               type="button"
               title="Link to a note"
               aria-label="Link to a note"
               onClick={() => setLinkPickerOpen(true)}
-              className="w-8 h-8 rounded-sm flex items-center justify-center text-paper/60 hover:text-paper hover:bg-paper/10 transition-colors"
+              className="w-8 h-8 rounded-sm flex items-center justify-center text-paper/60 hover:text-paper hover:bg-paper/10 transition-colors flex-shrink-0"
             >
               <Link2 className="w-4 h-4" strokeWidth={1.75} />
             </button>
           </div>
         </section>
       )}
+
+      {/* The page, set plainly for paper — only exists when printing */}
+      {activeNote && createPortal(
+        <div className="print-page" aria-hidden>
+          <h1>{activeNote.title || 'Untitled'}</h1>
+          <PrintDoc content={activeNote.content} />
+          <p className="print-colophon">
+            {activeNote.wordCount || 0} words · written {format(activeNote.createdAt, 'MMMM d, yyyy')} · Ink — a writing desk
+          </p>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
+
+/* ── Earlier drafts ───────────────────────────────────────────── */
+
+const DraftsDrawer: React.FC<{
+  drafts: Draft[]; // newest first
+  preview: number;
+  onPreview: (i: number) => void;
+  onRestore: (i: number) => void;
+  onClose: () => void;
+}> = ({ drafts, preview, onPreview, onRestore, onClose }) => {
+  const shown = drafts[preview];
+  return (
+    <>
+      <div className="absolute inset-0 z-[72] bg-ink/15" onClick={onClose} />
+      <motion.aside
+        initial={{ opacity: 0, x: 24 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 16 }}
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Earlier drafts"
+        className="absolute right-0 top-0 bottom-0 z-[73] w-full sm:w-[380px] bg-paper border-l border-line shadow-lift flex flex-col"
+      >
+        <div className="px-5 pt-5 pb-3 border-b border-line flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-serif text-lg font-semibold text-ink">Earlier drafts</h3>
+            <p className="font-mono text-2xs text-ink-ghost mt-0.5">
+              the blotter keeps the last twelve impressions
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close drafts"
+            className="w-7 h-7 flex items-center justify-center rounded text-ink-ghost hover:text-ink hover:bg-paper-dim transition-colors -mr-1.5 -mt-1 text-lg leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        {drafts.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2.5 px-8 text-center">
+            <PenRest className="w-24 h-12 opacity-80" />
+            <p className="font-serif text-[15px] text-ink-faint">One draft so far — this one.</p>
+            <p className="text-2xs font-mono text-ink-ghost leading-relaxed">
+              keep writing; earlier versions of the page settle here as it changes
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* The impression being examined */}
+            {shown && (
+              <div className="flex-1 min-h-0 flex flex-col border-b border-line">
+                <div className="px-5 pt-4 pb-2 flex items-baseline justify-between gap-3">
+                  <p className="font-serif font-semibold text-[15px] text-ink truncate">{shown.title || 'Untitled'}</p>
+                  <span className="font-mono text-2xs text-ink-ghost flex-shrink-0 tabular-nums">
+                    {formatDistanceToNow(shown.savedAt, { addSuffix: true })} · {shown.wordCount}w
+                  </span>
+                </div>
+                <div className="flex-1 overflow-y-auto custom-scrollbar px-5 pb-4">
+                  <div className="bg-paper-dim/60 border border-line rounded-sm px-4 py-3">
+                    <PrintDoc content={shown.content} />
+                  </div>
+                </div>
+                <div className="px-5 pb-4 pt-1">
+                  <button
+                    onClick={() => onRestore(preview)}
+                    className="w-full flex items-center justify-center gap-2 bg-ink text-paper text-[13px] font-medium py-2 rounded hover:bg-ink-soft transition-colors"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" strokeWidth={2} />
+                    Press this back onto the page
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* The stack of slips */}
+            <div className="max-h-[38%] overflow-y-auto custom-scrollbar py-1">
+              {drafts.map((draft, i) => (
+                <button
+                  key={`${draft.savedAt}-${i}`}
+                  onClick={() => onPreview(i)}
+                  className={clsx(
+                    'relative w-full text-left pl-5 pr-5 py-2.5 transition-colors',
+                    i === preview ? 'bg-paper-dim' : 'hover:bg-paper-dim/60'
+                  )}
+                >
+                  {i === preview && <span className="margin-mark" style={{ left: 2 }} />}
+                  <span className="block font-serif text-[13px] font-medium text-ink truncate">
+                    {draft.title || 'Untitled'}
+                  </span>
+                  <span className="block font-mono text-2xs text-ink-ghost tabular-nums mt-0.5">
+                    {format(draft.savedAt, 'MMM d, h:mm a')} · {draft.wordCount} words
+                  </span>
+                  <span className="block font-serif text-[12px] text-ink-faint truncate mt-0.5 opacity-80">
+                    {extractText(draft.content, 80) || 'A blank page.'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </motion.aside>
+    </>
+  );
+};
+
+/* ── PrintDoc — a note's JSON rendered plainly, for paper and previews ── */
+
+const PrintInline: React.FC<{ node: TipTapNode }> = ({ node }) => {
+  if (node.type === 'hardBreak') return <br />;
+  if (node.type !== 'text' || !node.text) {
+    return <>{node.content?.map((child, i) => <PrintInline key={i} node={child} />)}</>;
+  }
+  let out: React.ReactNode = node.text;
+  for (const mark of node.marks ?? []) {
+    if (mark.type === 'bold') out = <strong>{out}</strong>;
+    else if (mark.type === 'italic') out = <em>{out}</em>;
+    else if (mark.type === 'strike') out = <s>{out}</s>;
+    else if (mark.type === 'code') out = <code>{out}</code>;
+    else if (mark.type === 'highlight') out = <mark>{out}</mark>;
+    else if (mark.type === 'underline') out = <u>{out}</u>;
+  }
+  return <>{out}</>;
+};
+
+const PrintBlock: React.FC<{ node: TipTapNode }> = ({ node }) => {
+  const kids = (node.content ?? []).map((child, i) => <PrintBlock key={i} node={child} />);
+  const inline = (node.content ?? []).map((child, i) => <PrintInline key={i} node={child} />);
+  switch (node.type) {
+    case 'heading': {
+      const level = node.attrs?.level ?? 2;
+      if (level === 1) return <h1 className="font-serif font-semibold text-[1.35em] text-ink mt-4 mb-1">{inline}</h1>;
+      if (level === 3) return <h3 className="font-serif font-semibold text-ink-soft mt-3 mb-0.5">{inline}</h3>;
+      return <h2 className="font-serif font-semibold text-[1.15em] text-ink mt-4 mb-1">{inline}</h2>;
+    }
+    case 'blockquote':
+      return <blockquote className="border-l-2 border-pencil pl-3 my-2 italic text-ink-faint">{kids}</blockquote>;
+    case 'bulletList':
+      return <ul className="list-disc pl-5 my-1.5">{kids}</ul>;
+    case 'orderedList':
+      return <ol className="list-decimal pl-5 my-1.5">{kids}</ol>;
+    case 'listItem':
+      return <li>{kids}</li>;
+    case 'codeBlock':
+      return <pre className="font-mono text-[11px] leading-relaxed bg-ink text-paper/90 rounded p-3 my-2 overflow-x-auto whitespace-pre-wrap">{node.content?.map(c => c.text ?? '').join('')}</pre>;
+    case 'horizontalRule':
+      return <p className="print-asterism text-center tracking-[0.35em] text-ink-ghost my-4">⁂</p>;
+    case 'paragraph':
+    default:
+      return <p className="font-serif text-[13.5px] leading-relaxed text-ink-soft mb-2">{inline}</p>;
+  }
+};
+
+export const PrintDoc: React.FC<{ content: string }> = ({ content }) => {
+  const doc = sanitizeDoc(content);
+  return <>{doc.content?.map((node, i) => <PrintBlock key={i} node={node} />)}</>;
+};
+
+/* ── Small parts ──────────────────────────────────────────────── */
 
 const MenuItem: React.FC<{ icon: React.ElementType; label: string; onClick: () => void; danger?: boolean }> = ({ icon: Icon, label, onClick, danger }) => (
   <button
@@ -354,7 +613,7 @@ const ToolbarButton: React.FC<{
     disabled={!editor}
     onMouseDown={event => event.preventDefault()}
     onClick={() => editor && onAction(editor)}
-    className="w-8 h-8 rounded-sm flex items-center justify-center text-paper/60 hover:text-paper hover:bg-paper/10 disabled:opacity-30 transition-colors"
+    className="w-8 h-8 rounded-sm flex items-center justify-center text-paper/60 hover:text-paper hover:bg-paper/10 disabled:opacity-30 transition-colors flex-shrink-0"
   >
     <ToolbarGlyph icon={icon} />
   </button>
@@ -364,6 +623,14 @@ const ToolbarButton: React.FC<{
 const ToolbarGlyph: React.FC<{ icon: string }> = ({ icon }) => {
   const props = { className: 'w-4 h-4', strokeWidth: 2, fill: 'none', stroke: 'currentColor', strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   switch (icon) {
+    case 'undo':
+      return <Undo2 className="w-4 h-4" strokeWidth={1.75} />;
+    case 'redo':
+      return <Redo2 className="w-4 h-4" strokeWidth={1.75} />;
+    case 'highlight':
+      return <Highlighter className="w-4 h-4" strokeWidth={1.75} />;
+    case 'underline':
+      return <Underline className="w-4 h-4" strokeWidth={1.75} />;
     case 'format_bold':
       return <span className="font-serif font-bold text-[15px] leading-none">B</span>;
     case 'format_italic':

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useStore } from '../../store';
-import { extractText } from '../../lib/notes';
+import { buildNoteIndex } from '../../lib/notes';
 import { formatDistanceToNow } from 'date-fns';
 import { Undo2, Trash2, Trash } from 'lucide-react';
 import { hashOf } from '../../lib/ink-shapes';
@@ -11,6 +11,7 @@ export const TrashView: React.FC = () => {
   const trashed = notes
     .filter(n => n.trashedAt)
     .sort((a, b) => (b.trashedAt ?? 0) - (a.trashedAt ?? 0));
+  const index = useMemo(() => buildNoteIndex(notes), [notes]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-desk custom-scrollbar">
@@ -52,7 +53,7 @@ export const TrashView: React.FC = () => {
                     {note.title || 'Untitled'}
                     <Strike seed={note.id} stretch className="absolute inset-x-0 top-1/2 -translate-y-1/2 w-full h-[10px] pointer-events-none" />
                   </p>
-                  <p className="text-xs text-ink-faint truncate mt-0.5 font-serif opacity-70">{extractText(note.content, 90) || 'A blank page.'}</p>
+                  <p className="text-xs text-ink-faint truncate mt-0.5 font-serif opacity-70">{(index.get(note.id)?.text ?? '').slice(0, 90) || 'A blank page.'}</p>
                   <p className="font-mono text-2xs text-ink-ghost mt-1">
                     discarded {formatDistanceToNow(note.trashedAt!, { addSuffix: true })}
                   </p>

@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search, FilePlus2, Sun, BookOpen, Users, Mic2, Lightbulb, Trash2,
   Notebook, Star, History, Tags, Crosshair, BarChart3, FolderPlus,
-  Download, Droplet, PenLine, CornerDownLeft, Folder, Spline,
+  Download, Droplet, PenLine, CornerDownLeft, Folder, Spline, BookText,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useStore, type Note } from '../store';
 import { NOTE_TEMPLATES } from '../lib/templates';
-import { downloadFile, extractText } from '../lib/notes';
+import { downloadFile, buildNoteIndex, libraryToMarkdown } from '../lib/notes';
 
 interface PaletteItem {
   id: string;
@@ -49,6 +49,10 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
     onClose();
   };
 
+  // Flat text, parsed once per library change — search taps it instead of
+  // re-walking every note's document on every keystroke.
+  const textIndex = useMemo(() => buildNoteIndex(notes), [notes]);
+
   const items = useMemo<PaletteItem[]>(() => {
     const live = notes.filter(n => !n.trashedAt);
     const q = query.trim().toLowerCase();
@@ -67,6 +71,8 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
         run: () => setMode('folder') },
       { id: 'wetink', icon: Droplet, label: `${prefs.wetInk ? 'Dry' : 'Wet'} ink`, hint: 'words land wet on the page', section: 'actions',
         run: () => { setPrefs({ wetInk: !prefs.wetInk }); onClose(); } },
+      { id: 'bind', icon: BookText, label: 'Bind the library', hint: 'one markdown volume', section: 'actions',
+        run: () => { downloadFile('ink-library.md', libraryToMarkdown(live)); onClose(); } },
       { id: 'export', icon: Download, label: 'Export library as JSON', hint: `${live.length} notes`, section: 'actions',
         run: () => { downloadFile('ink-library.json', JSON.stringify(live, null, 2), 'application/json'); onClose(); } },
       { id: 'trash', icon: Trash2, label: 'Open the wastebasket', hint: `${notes.filter(n => n.trashedAt).length} notes`, section: 'actions',
@@ -85,7 +91,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
 
     const noteItems: PaletteItem[] = (q
       ? live.filter(n => {
-          const haystack = `${n.title} ${n.tags.join(' ')} ${extractText(n.content)}`.toLowerCase();
+          const haystack = `${n.title.toLowerCase()} ${n.tags.join(' ').toLowerCase()} ${textIndex.get(n.id)?.lower ?? ''}`;
           return q.startsWith('#')
             ? n.tags.some(t => t.toLowerCase().includes(q.slice(1)))
             : haystack.includes(q);
@@ -107,7 +113,7 @@ export const CommandPalette: React.FC<{ isOpen: boolean; onClose: () => void }> 
       ...noteItems,
     ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, notes, prefs.wetInk]);
+  }, [query, notes, prefs.wetInk, textIndex]);
 
   useEffect(() => setIndex(0), [query]);
 

@@ -49,6 +49,13 @@ export const MainLayout: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [notice, setNotice]);
 
+  // The desk is only so big — when storage refuses a write, say so plainly.
+  React.useEffect(() => {
+    const warn = () => setNotice({ message: 'The desk is full — export a copy, then clear room.' });
+    window.addEventListener('ink:storage-full', warn);
+    return () => window.removeEventListener('ink:storage-full', warn);
+  }, [setNotice]);
+
   return (
     <div className="flex h-screen w-full bg-desk text-ink overflow-hidden">
       <SideNavBar />

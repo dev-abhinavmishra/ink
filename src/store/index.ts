@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { format } from 'date-fns';
 import { todayKey, sanitizeDoc } from '../lib/notes';
 
@@ -36,9 +36,43 @@ export type Notice = {
   noteId?: string;
 };
 
+/** An earlier draft — what the page said before it was rewritten.
+ *  Kept sparse (one per ~half hour of editing) so a session doesn't
+ *  fill with near-identical pages. */
+export type Draft = {
+  title: string;
+  content: string;
+  wordCount: number;
+  savedAt: number; // when that version was last touched
+};
+
+const DRAFT_GAP = 30 * 60 * 1000;
+const DRAFT_LIMIT = 12;
+
+/* localStorage fills up quietly — browsers give ~5MB and a heavy
+ * library can reach it. When a write fails, surface it once instead
+ * of silently losing keystrokes. */
+let lastStorageWarning = 0;
+const guardedStorage = {
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem: (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      const now = Date.now();
+      if (now - lastStorageWarning > 30_000) {
+        lastStorageWarning = now;
+        window.dispatchEvent(new CustomEvent('ink:storage-full'));
+      }
+    }
+  },
+  removeItem: (key: string) => localStorage.removeItem(key),
+};
+
 type AppState = {
   notes: Note[];
   folders: Folder[];
+  drafts: Record<string, Draft[]>;
   activeNoteId: string | null;
   activeFolder: string;
   searchQuery: string;
@@ -69,6 +103,7 @@ type AppState = {
   removeNoteTag: (id: string, tag: string) => void;
   updateNoteFolder: (id: string, folder: string) => void;
   setNoteTags: (id: string, tags: string[]) => void;
+  restoreDraft: (id: string, index: number) => void;
   importNotes: (raw: unknown) => number;
 };
 
@@ -148,6 +183,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       notes: initialNotes,
       folders: initialFolders,
+      drafts: {},
       activeNoteId: 'seed-1',
       activeFolder: 'All Notes',
       searchQuery: '',
@@ -187,10 +223,55 @@ export const useStore = create<AppState>()(
       // folders) shouldn't move a page up the "edited" lists or wet the ink.
       updateNote: (id, updates) => set(state => {
         const written = 'content' in updates || 'title' in updates || 'wordCount' in updates;
+        // The blotter keeps an impression: when the body of a page changes,
+        // file the outgoing version as a draft — at most one per half hour
+        // of writing so drafts stay *checkpoints*, not keystrokes.
+        let drafts = state.drafts;
+        if (written && 'content' in updates) {
+          const note = state.notes.find(n => n.id === id);
+          if (note && note.content !== updates.content) {
+            const existing = drafts[id] ?? [];
+            const last = existing[existing.length - 1];
+            if (!last || Date.now() - last.savedAt > DRAFT_GAP) {
+              drafts = {
+                ...drafts,
+                [id]: [...existing.slice(-(DRAFT_LIMIT - 1)), {
+                  title: note.title,
+                  content: note.content,
+                  wordCount: note.wordCount,
+                  savedAt: note.lastModified,
+                }],
+              };
+            }
+          }
+        }
         return {
           notes: state.notes.map(note =>
             note.id === id ? { ...note, ...updates, ...(written ? { lastModified: Date.now() } : {}) } : note
           ),
+          drafts,
+        };
+      }),
+
+      // Press an earlier draft back onto the page. The version being
+      // replaced is itself filed first — restoring is never a loss.
+      restoreDraft: (id, index) => set(state => {
+        const note = state.notes.find(n => n.id === id);
+        const draft = state.drafts[id]?.[index];
+        if (!note || !draft) return {};
+        const list = state.drafts[id];
+        const rest = list.filter((_, i) => i !== index);
+        const currentIsNew = !list.some(d => d.content === note.content && d.title === note.title);
+        const keep = currentIsNew
+          ? [...rest, { title: note.title, content: note.content, wordCount: note.wordCount, savedAt: note.lastModified }].slice(-DRAFT_LIMIT)
+          : rest;
+        return {
+          notes: state.notes.map(n => n.id === id
+            ? { ...n, title: draft.title, content: draft.content, wordCount: draft.wordCount, lastModified: Date.now() }
+            : n
+          ),
+          drafts: { ...state.drafts, [id]: keep },
+          notice: { id: Date.now(), message: 'Pressed back onto the page' },
         };
       }),
 
@@ -218,13 +299,20 @@ export const useStore = create<AppState>()(
       deleteForever: (id) => set(state => {
         const remaining = state.notes.filter(n => n.id !== id);
         const newActive = state.activeNoteId === id ? (remaining.find(n => !n.trashedAt)?.id ?? null) : state.activeNoteId;
-        return { notes: remaining, activeNoteId: newActive };
+        const drafts = { ...state.drafts };
+        delete drafts[id];
+        return { notes: remaining, activeNoteId: newActive, drafts };
       }),
 
-      emptyTrash: () => set(state => ({
-        notes: state.notes.filter(n => !n.trashedAt),
-        notice: { id: Date.now(), message: 'Wastebasket emptied' },
-      })),
+      emptyTrash: () => set(state => {
+        const drafts = { ...state.drafts };
+        for (const note of state.notes) if (note.trashedAt) delete drafts[note.id];
+        return {
+          notes: state.notes.filter(n => !n.trashedAt),
+          drafts,
+          notice: { id: Date.now(), message: 'Wastebasket emptied' },
+        };
+      }),
 
       duplicateNote: (id) => set(state => {
         const source = state.notes.find(n => n.id === id);
@@ -367,7 +455,8 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'ink-notes-storage',
-      version: 3,
+      version: 4,
+      storage: createJSONStorage(() => guardedStorage),
       migrate: (persisted, version) => {
         const state = persisted as {
           notes?: Note[]; folders?: Folder[]; activeNoteId?: string | null;
@@ -377,6 +466,7 @@ export const useStore = create<AppState>()(
         const base = {
           notes: state.notes ?? [],
           folders: state.folders ?? [],
+          drafts: (state as { drafts?: Record<string, Draft[]> }).drafts ?? {},
           activeNoteId: state.activeNoteId ?? null,
           activeFolder: state.activeFolder ?? 'All Notes',
           sortOrder: state.sortOrder ?? 'modified',
@@ -401,6 +491,7 @@ export const useStore = create<AppState>()(
       partialize: (state) => ({
         notes: state.notes,
         folders: state.folders,
+        drafts: state.drafts,
         activeNoteId: state.activeNoteId,
         activeFolder: state.activeFolder,
         sortOrder: state.sortOrder,

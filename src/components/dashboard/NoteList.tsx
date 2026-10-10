@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore, type Note, type SortOrder } from '../../store';
-import { extractText } from '../../lib/notes';
+import { buildNoteIndex, type NoteIndex } from '../../lib/notes';
 import { useNow } from '../../lib/useNow';
 import clsx from 'clsx';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -45,6 +45,8 @@ export const NoteList: React.FC<NoteListProps> = ({ filter = 'all', title }) => 
   } = useStore();
   const [sortOpen, setSortOpen] = useState(false);
   const now = useNow();
+  // One flat-text pass over the library — search and snippets read the index.
+  const index = useMemo(() => buildNoteIndex(notes), [notes]);
 
   const live = notes.filter(n => !n.trashedAt);
 
@@ -57,7 +59,7 @@ export const NoteList: React.FC<NoteListProps> = ({ filter = 'all', title }) => 
     } else if (query) {
       const match =
         note.title.toLowerCase().includes(query) ||
-        extractText(note.content, 100000).toLowerCase().includes(query) ||
+        (index.get(note.id)?.lower.includes(query) ?? false) ||
         note.tags.some(tag => tag.toLowerCase().includes(query));
       if (!match) return false;
     }
@@ -221,6 +223,7 @@ export const NoteList: React.FC<NoteListProps> = ({ filter = 'all', title }) => 
                     onTrash={trashNote}
                     onTagClick={tag => setSearchQuery(`#${tag}`)}
                     onTagRemove={removeNoteTag}
+                    index={index}
                   />
                 ))}
                 {unpinnedNotes.length > 0 && (
@@ -239,6 +242,7 @@ export const NoteList: React.FC<NoteListProps> = ({ filter = 'all', title }) => 
                 onTrash={trashNote}
                 onTagClick={tag => setSearchQuery(`#${tag}`)}
                 onTagRemove={removeNoteTag}
+                index={index}
               />
             ))}
           </div>
@@ -257,10 +261,11 @@ interface NoteCardProps {
   onTrash: (id: string) => void;
   onTagClick: (tag: string) => void;
   onTagRemove: (id: string, tag: string) => void;
+  index: Map<string, NoteIndex>;
 }
 
-const NoteCard: React.FC<NoteCardProps> = ({ note, now, isActive, onSelect, onPin, onTrash, onTagClick, onTagRemove }) => {
-  const snippet = extractText(note.content, 140);
+const NoteCard: React.FC<NoteCardProps> = ({ note, now, isActive, onSelect, onPin, onTrash, onTagClick, onTagRemove, index }) => {
+  const snippet = (index.get(note.id)?.text ?? '').slice(0, 140);
   return (
     <div
       onClick={onSelect}
